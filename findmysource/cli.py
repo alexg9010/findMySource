@@ -510,14 +510,21 @@ def main():
             if order: rows.append({"o": rel(f), "s": [rel(x) for x in order], "c": [ss[x] for x in order],
                                    "m": ts(st.st_mtime), "sm": [info[x]["modified"] for x in order]})
 
-    # 5. graph: linked files only; >15 files from one script into one dir collapse into a group node
-    nodes, nid, member = [], {}, {}
+    # 5. graph: linked files only. When one script writes >15 files into one folder, a "group" node is added
+    #    and those files get "grp": <group id>; the page can show either the group or the files (toggle).
+    nodes, nid = [], {}
     def node(key, label, group, title):
         if key not in nid:
             nid[key] = len(nodes)
             nodes.append({"id": nid[key], "label": label, "group": group, "title": title})
         return nid[key]
     snode = lambda s: node(s, os.path.basename(s), "script", f"{rel(s)}\nlast change {info[s]['modified']}")
+    def fnode(f):
+        tip = f"{rel(f)}\nmodified {ts(stat[f].st_mtime)}"
+        if f in stale: tip += f"\n⚠ script edited {stale[f]:g} days later: possibly stale"
+        fid = node(f, os.path.basename(f), "file", tip)
+        if f in stale: nodes[fid]["stale"] = stale[f]
+        return fid
     grp = defaultdict(list)
     for f, ss in src_of.items():
         for s in ss: grp[(s, os.path.dirname(f))].append(f)
@@ -531,16 +538,12 @@ def main():
                      "\n".join(sorted(os.path.basename(x) for x in fl)[:60]))
             if n_stale: nodes[g]["stale"] = n_stale
             gedges.add((sn, g, "writes"))
-            for f in fl: member.setdefault(f, g)
-        else:
-            for f in fl:
-                tip = f"{rel(f)}\nmodified {ts(stat[f].st_mtime)}"
-                if f in stale: tip += f"\n⚠ script edited {stale[f]:g} days later: possibly stale"
-                fid = node(f, os.path.basename(f), "file", tip)
-                if f in stale: nodes[fid]["stale"] = stale[f]
-                gedges.add((sn, fid, "writes"))
+        for f in fl:
+            fid = fnode(f)
+            if len(fl) > 15: nodes[fid].setdefault("grp", g)
+            gedges.add((sn, fid, "writes"))
     for f, s, k in sorted(edges):
-        fid = nid.get(f, member.get(f))
+        fid = nid.get(f)
         if fid is None and s not in nid and k == "reads": continue  # input of an unconnected script
         if fid is None:
             fid = snode(f) if f in info else node(f, os.path.basename(f), "input", rel(f) + "\n(not a tracked output)")
