@@ -1,6 +1,21 @@
-# findMySource
+<p align="center">
+  <img src="docs/logo.svg" alt="findMySource logo" width="128">
+</p>
 
-**Trace every output of a project back to the script that made it.**
+<h1 align="center">findMySource</h1>
+
+<p align="center">
+  <b>Every file has an origin story. <code>fms</code> tells it.</b><br>
+  Trace every output of a project back to the script that made it.
+</p>
+
+<p align="center">
+  <img alt="Python ≥ 3.8" src="https://img.shields.io/badge/python-%E2%89%A5%203.8-3776ab?logo=python&logoColor=white">
+  <img alt="zero dependencies" src="https://img.shields.io/badge/dependencies-0-14b8a6">
+  <img alt="MIT license" src="https://img.shields.io/badge/license-MIT-f97316">
+</p>
+
+---
 
 Coming back to an analysis after months away, or preparing a figure for a paper,
 you often need to answer: *which script produced this file, from which inputs,

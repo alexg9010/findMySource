@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
+  <title>findMySource</title>
+  <style>
+    .ink { stroke: #1f2937; }
+    .lens { fill: #ffffff; }
+    @media (prefers-color-scheme: dark) {
+      .ink { stroke: #e5e7eb; }
+      .lens { fill: #111827; }
+    }
+  </style>
+  <!-- handle -->
+  <line x1="84" y1="84" x2="116" y2="116" class="ink" stroke-width="12" stroke-linecap="round"/>
+  <!-- lens -->
+  <circle cx="54" cy="54" r="44" class="lens ink" stroke-width="8"/>
+  <!-- lineage: two scripts feeding one output -->
+  <path d="M34 36 C 50 36, 50 54, 66 54 M34 72 C 50 72, 50 54, 66 54" fill="none" stroke="#14b8a6" stroke-width="4" stroke-linecap="round"/>
+  <rect x="22" y="28" width="16" height="16" rx="3" fill="#14b8a6"/>
+  <rect x="22" y="64" width="16" height="16" rx="3" fill="#14b8a6"/>
+  <!-- output file with folded corner -->
+  <path d="M64 40 h14 l8 8 v22 h-22 z" fill="#f97316"/>
+  <path d="M78 40 v8 h8" fill="none" stroke="#ffffff" stroke-width="2" stroke-linejoin="round"/>
+</svg>
