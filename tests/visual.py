@@ -74,6 +74,14 @@ def main():
                     leaf.hover()
                     if not page.eval_on_selector("#tip", "t => t.style.display === 'block' && t.textContent"):
                         problems.append("flow: hovering a box shows no tooltip")
+                    page.select_option("#sel", "(all)")
+                    grouped = boxes.count()
+                    page.uncheck("#fold")
+                    ungrouped = boxes.count()
+                    print(f"flow (all): {grouped} boxes with folder groups, {ungrouped} without")
+                    if ungrouped < grouped:
+                        problems.append("flow: ungrouping folders reduced the number of boxes")
+                    snap(page, "flow-ungrouped")
             if tab == "table":  # the staleness filter must narrow the table
                 before = page.locator("#tb tr").count()
                 page.select_option("#sf", "stale")
@@ -89,11 +97,19 @@ def main():
             state = "canvas" if page.locator("#netbox canvas").count() else "offline message"
         except Exception:
             state = "nothing after 20 s"
-        print(f"network: {state}")
+        print(f"steps: {state}")
         if state != "canvas":
-            problems.append(f"network: {state}")
-        page.wait_for_timeout(2500)  # let the layout settle before the screenshot
-        snap(page, "network")
+            problems.append(f"steps: {state}")
+        else:
+            collapsed = page.evaluate("network.nodes.length")
+            snap(page, "steps")
+            page.click("#nexp")
+            page.wait_for_timeout(500)
+            expanded = page.evaluate("network.nodes.length")
+            print(f"steps: {collapsed} boxes collapsed, {expanded} expanded")
+            if expanded <= collapsed:
+                problems.append("steps: 'expand all' did not add boxes")
+            snap(page, "steps-expanded")
         page.close()
 
         page = open_tab("flow", dark=True)

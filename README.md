@@ -26,12 +26,16 @@ your scripts and output folders, matches the two up, and writes:
   match confidence, creation and modification dates, and the inputs of those scripts.
 - `fms-report/index.html`: an interactive report you can open in any browser:
   - **Flow**: a left-to-right map of the pipeline. Click a box to highlight
-    everything upstream and downstream of it.
+    everything upstream and downstream of it. Folders with many files can be shown
+    as one box or as individual files.
   - **Timeline**: when each output was last written, compared with its script's
-    last change. Outputs that are older than the script are flagged as possibly stale.
+    last change. An output is flagged as possibly stale when its script was edited more
+    than an hour after the output was written. The table and timeline can filter for these.
   - **Matrix**: which scripts write into which folders.
   - **Table**: a searchable, sortable version of the manifest.
-  - **Network**: a force-directed overview.
+  - **Steps**: an overview with one box per pipeline step (script folder). Arrows show
+    which step reads files written by another. Click a step to expand it into its scripts,
+    and click a script to open it in Flow.
 - `fms-report/graph.json`: the same graph, for your own tooling.
 
 `fms` needs no running pipeline, no workflow manager and no changes to your
@@ -141,7 +145,7 @@ and `Makefile`. Set `extensions` in `fms.json` to change it.
   or passed in as a command-line argument, can only be matched through wildcards, or not at all.
 - Variables are inherited one level deep. If `a.R` sources `b.R`, which sources `c.R`,
   then `a.R` gets the variables of `b.R` only.
-- The Network tab loads `vis-network` from a CDN. All other tabs work offline.
+- The Steps tab loads `vis-network` from a CDN. All other tabs work offline.
 
 ## Roadmap
 
@@ -158,7 +162,7 @@ python tests/test_examples.py    # score on the example projects (expected.json 
 ```
 
 Browser check of the report: it takes screenshots of every tab, tests click-to-trace,
-the staleness filter and the network tab, and fails on any console error.
+the staleness filter, folder grouping and the Steps tab, and fails on any console error.
 [uv](https://docs.astral.sh/uv/) installs Playwright on the fly:
 ```bash
 uvx playwright@1.64.1 install chromium     # once (add --with-deps on Debian/Ubuntu)
