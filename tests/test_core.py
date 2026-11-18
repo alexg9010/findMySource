@@ -5,7 +5,7 @@ import tempfile
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # run without installing
 
-from findmysource.cli import Index, make_norm, parse_script, read_code
+from findmysource.cli import Index, make_norm, parse_script, read_code, walk
 
 
 def test_core():
@@ -48,6 +48,12 @@ write.csv(d, here::here("tables", "t.csv"))
         rmd = f"{t}/proj/r.Rmd"
         open(rmd, "w").write("---\ntitle: x\nparams:\n  out:\n    value: /o\n  sfx: \"A\"\n---\n```{R}\nsaveRDS(x, file.path(params$out, paste0(params$sfx, '.rds')))\n```\n")
         assert parse_script(*read_code(rmd))["writes"] == ["/o/A.rds"]
+
+        for d in (".git", ".hidden/sub", "shown/.cache"): os.makedirs(f"{t}/w/{d}")
+        for f in (".git/x", ".hidden/sub/y", "shown/.cache/z", "shown/a", ".dotfile"): open(f"{t}/w/{f}", "w").close()
+        assert sorted(os.path.relpath(f, f"{t}/w") for f in walk([f"{t}/w"], [])) == [".dotfile", "shown/a"]
+        assert len(list(walk([f"{t}/w"], [], hidden=True))) == 5
+        assert list(walk([f"{t}/w/.hidden"], [])) == [f"{t}/w/.hidden/sub/y"]  # explicit hidden root is scanned
 
 
 if __name__ == "__main__":

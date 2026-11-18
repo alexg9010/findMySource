@@ -232,13 +232,15 @@ def git_dates(root):
     dirty = {os.path.join(top, ln[3:].split(" -> ")[-1]) for ln in git("status", "--porcelain", "-uall").splitlines()}
     return dates, dirty
 
-def walk(roots, exclude):
+def walk(roots, exclude, hidden=False):
+    """Yield files under roots. Hidden folders (.git, .snakemake, ...) are skipped unless hidden=True;
+    a hidden folder listed explicitly as a root is still scanned."""
     ex = re.compile("|".join(fnmatch.translate(e) for e in exclude) or "(?!)")
     for r in roots:
         real = os.path.realpath(r)
         if os.path.isfile(real): yield real; continue
         for d, ds, fs in os.walk(real):
-            ds[:] = [x for x in ds if not ex.match(x)]
+            ds[:] = [x for x in ds if not ex.match(x) and (hidden or not x.startswith("."))]
             for f in fs:
                 if not ex.match(f): yield os.path.join(d, f)
 
@@ -256,8 +258,9 @@ def main():
     if not os.path.exists(tpl_path): sys.exit(f"missing template {tpl_path} (broken install?)")
     root = os.path.realpath(".")
     exts = tuple(e.lower() for e in cfg.get("extensions", [".r", ".rmd", ".qmd", ".ipynb"]))
-    exclude = cfg.get("exclude", [".git", ".Rproj.user", ".ipynb_checkpoints", "rstudio-server-db", "rstudio_state",
-                                  "*.RData", ".Rhistory", "#*#", "%", ".DS_Store", "*_cache"])
+    exclude = cfg.get("exclude", ["rstudio-server-db", "rstudio_state", "__pycache__", "*_cache",
+                                  "*.RData", ".Rhistory", "#*#", "%", ".DS_Store"])
+    hidden = cfg.get("hidden", False)  # scan hidden folders too
     aliases = {k: (v if v.startswith("/") else os.path.normpath(os.path.join(root, v)))
                for k, v in cfg.get("aliases", {}).items()}
     resolve = make_norm(aliases, root)
@@ -265,7 +268,7 @@ def main():
 
     # 1. scripts
     commit, dirty = git_dates(root)
-    scripts = sorted({s for s in walk(cfg.get("scripts", ["."]), exclude) if s.lower().endswith(exts)})
+    scripts = sorted({s for s in walk(cfg.get("scripts", ["."]), exclude, hidden) if s.lower().endswith(exts)})
     info = {}
     for s in scripts:
         code, params = read_code(s)
@@ -279,7 +282,7 @@ def main():
 
     # 2. files (one stat each)
     stat = {}
-    for f in walk(cfg.get("outputs", ["."]), exclude):
+    for f in walk(cfg.get("outputs", ["."]), exclude, hidden):
         try: stat[f] = os.stat(f)
         except OSError: pass
     rep = defaultdict(set)  # rendered reports next to their Rmd/qmd/ipynb
