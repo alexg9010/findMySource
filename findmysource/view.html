@@ -21,6 +21,9 @@
   nav button.on{background:var(--acc);border-color:var(--acc);color:#fff}
   .view{display:none;padding:14px 20px}.view.on{display:block}
   .tools{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px;color:var(--mute)}
+  .tools button{font:inherit;padding:5px 10px;border:1px solid var(--line);border-radius:6px;background:var(--panel);color:var(--ink);cursor:pointer}
+  .tools button:hover{border-color:var(--acc)}
+  td.stale{color:var(--stale)}
   .tools select,.tools input{font:inherit;padding:5px 8px;border:1px solid var(--line);border-radius:6px;background:var(--panel);color:var(--ink)}
   .card{background:var(--panel);border:1px solid var(--line);border-radius:10px;overflow:auto;max-height:calc(100vh - 210px)}
   .key{display:inline-flex;align-items:center;gap:5px;margin-right:10px}
@@ -42,7 +45,7 @@
   .chip.weak{color:var(--mute)}
   #tip{position:fixed;pointer-events:none;z-index:50;max-width:520px;background:#111c;color:#fff;padding:7px 10px;border-radius:6px;
        font:12px/1.45 ui-monospace,Menlo,monospace;white-space:pre-wrap;word-break:break-all;display:none;backdrop-filter:blur(4px)}
-  #vis{height:calc(100vh - 230px)}
+  #netbox{height:calc(100vh - 230px)}
   .empty{padding:40px;text-align:center;color:var(--mute)}
 </style>
 
@@ -59,6 +62,7 @@
   <div class="tools">
     <label>pipeline step <select id="sel"></select></label>
     <input id="fq" placeholder="find a file or script…" size="28">
+    <button id="fit" data-tip="switch between fitting the whole map into the window and 100% size">100%</button>
     <span><span class="key"><span class="sw" style="background:var(--script)"></span>script</span>
       <span class="key"><span class="sw" style="background:var(--file)"></span>file</span>
       <span class="key"><span class="sw" style="background:var(--group)"></span>folder group</span>
@@ -73,7 +77,7 @@
 
 <section id="timeline" class="view">
   <div class="tools"><span class="key"><span class="sw" style="background:var(--fresh)"></span>output newer than its script</span>
-    <span class="key"><span class="sw" style="background:var(--stale)"></span>output older than the script's last change (possibly stale)</span>
+    <span class="key"><span class="sw" style="background:var(--stale)"></span>script edited more than 1 h after the output (possibly stale)</span>
     <span class="key"><span class="sw" style="background:var(--ink);width:3px"></span>script's last change</span></div>
   <div class="card"><svg id="tsvg"></svg></div>
 </section>
@@ -92,7 +96,7 @@
 
 <section id="network" class="view">
   <div class="tools">Force layout, frozen after it settles. Needs internet for the vis-network library.</div>
-  <div class="card" id="vis"></div>
+  <div class="card" id="netbox"></div>
 </section>
 <div id="tip"></div>
 
@@ -100,6 +104,11 @@
 const D = __DATA__, G = D.graph, $ = id => document.getElementById(id);
 const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
 const dirOf = p => p.includes('/') ? p.slice(0, p.lastIndexOf('/')) : '.';
+// "possibly stale" = the script was edited more than an hour after the output was written
+// (edits within the hour are usually "ran it, then fixed a comment")
+const STALE_MS = 3600e3;
+const ago = ms => ms < 864e5 ? Math.round(ms / 3600e3) + ' h' : ms < 60 * 864e5 ? Math.round(ms / 864e5) + ' days' : Math.round(ms / (30.4 * 864e5)) + ' months';
+const staleBy = r => { const g = Math.max(...r.sm.map(s => new Date(s).getTime())) - new Date(r.m).getTime(); return g > STALE_MS ? g : 0; };
 const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
 const NCOL = {script: '--script', file: '--file', group: '--group', input: '--input'};
 const ECOL = {writes: '--script', reads: '--read', source: '--src'};
@@ -141,7 +150,8 @@ function flow() {
   $('sel').innerHTML = ['(all)', ...dirs].map(d => `<option>${esc(d)}</option>`).join('');
   $('sel').value = dirs.find(d => /deconv/i.test(d)) || '(all)';
   $('sel').onchange = draw;
-  let N, E, pos;
+  let N, E, pos, scale = 1, fit = true;
+  $('fit').onclick = () => { fit = !fit; $('fit').textContent = fit ? '100%' : 'Fit to width'; draw(); };
 
   function draw() {
     let keep = new Set(G.nodes.map(n => n.id)); E = G.edges;
@@ -196,12 +206,16 @@ function flow() {
       const p = pos[n.id], c = css(NCOL[n.group]);
       o += `<g class="nd" data-id="${n.id}" data-tip="${esc(n.title)}"><rect class="b" x="${p.x}" y="${p.y}" width="${W}" height="${H}" rx="6"/>` +
            `<rect x="${p.x}" y="${p.y}" width="5" height="${H}" rx="2" fill="${c}"/>` +
-           `<text x="${p.x + 12}" y="${p.y + 19}"${n.group === 'script' ? ' font-weight="600"' : ''}>${esc(n.label.length > 32 ? n.label.slice(0, 31) + '…' : n.label)}</text></g>`;
+           `<text x="${p.x + 12}" y="${p.y + 19}"${n.group === 'script' ? ' font-weight="600"' : ''}>${esc(n.label.length > 32 ? n.label.slice(0, 13) + '…' + n.label.slice(-18) : n.label)}</text></g>`;
     });
     o += '</g>';
-    const svg = $('fsvg');
-    svg.setAttribute('width', PAD * 2 + cols.length * (W + GX) - GX);
-    svg.setAttribute('height', PAD * 2 + maxRows * (H + GY));
+    const svg = $('fsvg'), Wn = PAD * 2 + cols.length * (W + GX) - GX, Hn = PAD * 2 + maxRows * (H + GY);
+    // fit the whole map into the card, but never shrink text below ~45% (then scroll instead)
+    const s = Math.min(1, ($('fcard').clientWidth - 4) / Wn);
+    scale = fit && s >= 0.45 ? s : 1;
+    svg.setAttribute('viewBox', `0 0 ${Wn} ${Hn}`);
+    svg.setAttribute('width', Wn * scale);
+    svg.setAttribute('height', Hn * scale);
     svg.innerHTML = `<defs><marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,0L10,5L0,10z" fill="${css('--mute')}"/></marker></defs>` + o +
       (N.length ? '' : `<text x="20" y="30" class="mute">nothing linked in this step</text>`);
   }
@@ -225,7 +239,7 @@ function flow() {
     const n = N.find(n => n.title.toLowerCase().includes(t));
     if (!n) return;
     highlight(n.id);
-    $('fcard').scrollTo({left: pos[n.id].x - 40, top: pos[n.id].y - 80, behavior: 'smooth'});
+    $('fcard').scrollTo({left: pos[n.id].x * scale - 40, top: pos[n.id].y * scale - 80, behavior: 'smooth'});
   };
   draw();
 }
@@ -253,9 +267,9 @@ function timeline() {
          `<line class="axis" x1="${L}" x2="${L + PW}" y1="${y}" y2="${y}" stroke-dasharray="2 4"/>`;
     if (!isNaN(sm)) o += `<rect x="${x(sm) - 1.5}" y="${y - 8}" width="3" height="16" rx="1" style="fill:var(--ink)"/>`;
     by[nm].forEach(r => {
-      const stale = !isNaN(sm) && t(r.m) < sm;
+      const gap = isNaN(sm) ? 0 : sm - t(r.m), stale = gap > STALE_MS;
       o += `<circle cx="${x(t(r.m))}" cy="${y}" r="4.5" fill="${css(stale ? '--stale' : '--fresh')}" fill-opacity=".7" stroke="${css('--panel')}"` +
-           ` data-tip="${esc(r.o)}\nmodified ${r.m}${stale ? '\n⚠ older than the script\'s last change' : ''}"/>`;
+           ` data-tip="${esc(r.o)}\nmodified ${r.m}${stale ? `\n⚠ script edited ${ago(gap)} later: possibly stale` : ''}"/>`;
     });
   });
   $('tsvg').setAttribute('width', L + PW + 30);
@@ -268,8 +282,9 @@ function matrix() {
   if (!D.rows.length) { $('msvg').outerHTML = '<div class="empty">no matched outputs</div>'; return; }
   const cnt = {}, rs = new Set(), cs = new Set();
   D.rows.forEach(r => { const c = dirOf(r.o); cs.add(c); r.s.forEach(s => { rs.add(s); cnt[s + '|' + c] = (cnt[s + '|' + c] || 0) + 1; }); });
-  const R = [...rs].sort(), C = [...cs].sort(), cell = 18, L = 330, T = 200;
   const short = c => { const p = c.split('/').slice(-2).join('/'); return p.length > 32 ? '…' + p.slice(-31) : p; };
+  const R = [...rs].sort(), C = [...cs].sort(), cell = 18, L = 330;
+  const T = 24 + Math.max(...C.map(c => short(c).length)) * 5.4;  // room for the rotated column labels
   let o = '';
   C.forEach((c, j) => {
     const x = L + j * cell + cell / 2;
@@ -311,7 +326,9 @@ function table() {
     $('cnt').textContent = rows.length.toLocaleString() + ' rows' + (rows.length > 2000 ? ' (first 2000 shown)' : '');
     $('tb').innerHTML = '<tr>' + heads.map(([k, l]) => `<th data-k="${k}">${l}${key === k ? (dir > 0 ? ' ▲' : ' ▼') : ''}</th>`).join('') + '</tr>' +
       rows.slice(0, 2000).map(r => `<tr><td class="p">${esc(r.o)}</td><td class="p">${r.s.map(esc).join('<br>')}</td>` +
-        `<td>${r.c.map(chip).join('<br>')}</td><td>${r.m.replace('T', ' ')}</td><td>${r.sm.map(x => x.replace('T', ' ')).join('<br>')}</td></tr>`).join('');
+        `<td>${r.c.map(chip).join('<br>')}</td>` + (staleBy(r)
+          ? `<td class="stale" data-tip="the script was edited ${ago(staleBy(r))} after this file was written: possibly stale">⚠ ${r.m.replace('T', ' ')}<br><small>script edited ${ago(staleBy(r))} later</small></td>`
+          : `<td>${r.m.replace('T', ' ')}</td>`) + `<td>${r.sm.map(x => x.replace('T', ' ')).join('<br>')}</td></tr>`).join('');
     $('tb').querySelectorAll('th').forEach(th => th.onclick = () => { dir = key === th.dataset.k ? -dir : 1; key = th.dataset.k; draw(); });
   }
   $('q').oninput = $('cf').onchange = draw;
@@ -324,14 +341,14 @@ function network() {
     const nodes = new vis.DataSet(G.nodes.map(n => ({id: n.id, label: n.label, title: n.title, shape: 'box',
       color: {background: css(NCOL[n.group]), border: css(NCOL[n.group])}, font: {color: '#fff', size: 12}, margin: 6})));
     const edges = new vis.DataSet(G.edges.map(e => ({from: e.from, to: e.to, arrows: 'to', color: css(ECOL[e.kind]), dashes: e.kind !== 'writes'})));
-    const net = new vis.Network($('vis'), {nodes, edges}, {physics: {solver: 'forceAtlas2Based', stabilization: {iterations: 400}}, interaction: {hover: true}});
+    const net = new vis.Network($('netbox'), {nodes, edges}, {physics: {solver: 'forceAtlas2Based', stabilization: {iterations: 400}}, interaction: {hover: true}});
     net.once('stabilizationIterationsDone', () => net.setOptions({physics: false}));
   };
-  if (window.vis) return go();
+  if (window.vis && window.vis.Network) return go();  // note: never name an element id="vis" (it shadows window.vis)
   const s = document.createElement('script');
   s.src = 'https://unpkg.com/vis-network@9.1.9/standalone/umd/vis-network.min.js';
   s.onload = go;
-  s.onerror = () => $('vis').innerHTML = '<div class="empty">vis-network could not be loaded (offline?). The other tabs work without internet.</div>';
+  s.onerror = () => $('netbox').innerHTML = '<div class="empty">vis-network could not be loaded (offline?). The other tabs work without internet.</div>';
   document.head.appendChild(s);
 }
 
