@@ -55,7 +55,7 @@
 </header>
 <nav>
   <button data-v="flow">Flow</button><button data-v="timeline">Timeline</button><button data-v="matrix">Matrix</button>
-  <button data-v="table">Table</button><button data-v="network">Network</button>
+  <button data-v="table">Table</button><button data-v="network">Steps</button>
 </nav>
 
 <section id="flow" class="view">
@@ -63,6 +63,7 @@
     <label>pipeline step <select id="sel"></select></label>
     <input id="fq" placeholder="find a file or script…" size="28">
     <button id="fit" data-tip="switch between fitting the whole map into the window and 100% size">100%</button>
+    <label data-tip="when a script writes more than 15 files into one folder, show the folder as one box"><input type="checkbox" id="fold" checked> group large folders</label>
     <span><span class="key"><span class="sw" style="background:var(--script)"></span>script</span>
       <span class="key"><span class="sw" style="background:var(--file)"></span>file</span>
       <span class="key"><span class="sw" style="background:var(--group)"></span>folder group</span>
@@ -98,7 +99,12 @@
 </section>
 
 <section id="network" class="view">
-  <div class="tools">Force layout, frozen after it settles. Needs internet for the vis-network library.</div>
+  <div class="tools">
+    <span>One box per pipeline step (script folder). Arrow width = files one step reads from another.
+      Click a step to expand it into its scripts; click a script to open it in Flow.</span>
+    <button id="nexp">expand all</button><button id="ncol">collapse all</button>
+    <label><input type="checkbox" id="ninp"> show external inputs</label>
+    <span class="mute">(needs internet for the vis-network library)</span></div>
   <div class="card" id="netbox"></div>
 </section>
 <div id="tip"></div>
@@ -146,6 +152,43 @@ function show(v) {
 }
 document.querySelectorAll('nav button').forEach(b => b.onclick = () => show(b.dataset.v));
 
+/* left-to-right columns: drop back edges (cycles: a script that reads what it writes, steps that read each
+   other's outputs), then longest-path layering in topological order. ids: list, edges: [{from, to}] */
+function layers(ids, edges) {
+  const out = {}, state = {}, back = new Set();
+  edges.forEach((e, i) => (out[e.from] = out[e.from] || []).push(i));
+  for (const id of ids) {
+    if (state[id]) continue;
+    const st = [[id, 0]]; state[id] = 1;
+    while (st.length) {
+      const top = st[st.length - 1], ei = (out[top[0]] || [])[top[1]++];
+      if (ei === undefined) { state[top[0]] = 2; st.pop(); continue; }
+      const to = edges[ei].to;
+      if (state[to] === 1) back.add(ei); else if (!state[to]) { state[to] = 1; st.push([to, 0]); }
+    }
+  }
+  const DE = edges.filter((e, i) => !back.has(i)), indeg = {}, lay = {}, dout = {};
+  ids.forEach(id => { indeg[id] = 0; lay[id] = 0; });
+  DE.forEach(e => { indeg[e.to]++; (dout[e.from] = dout[e.from] || []).push(e.to); });
+  const q = ids.filter(id => !indeg[id]);
+  while (q.length) { const u = q.shift(); for (const v of dout[u] || []) { lay[v] = Math.max(lay[v], lay[u] + 1); if (!--indeg[v]) q.push(v); } }
+  return lay;
+}
+
+/* folder groups: files with "grp" belong to a group node. collapse=true shows the group, false the files */
+function foldGraph(collapse) {
+  if (!collapse) {
+    const grp = new Set(G.nodes.filter(n => n.group === 'group').map(n => n.id));
+    return {nodes: G.nodes.filter(n => !grp.has(n.id)), edges: G.edges.filter(e => !grp.has(e.from) && !grp.has(e.to))};
+  }
+  const to = id => G.nodes[id].grp ?? id, seen = new Set(), edges = [];
+  for (const e of G.edges) {
+    const f = to(e.from), t = to(e.to), k = `${f}>${t}>${e.kind}`;
+    if (f !== t && !seen.has(k)) { seen.add(k); edges.push({from: f, to: t, kind: e.kind}); }
+  }
+  return {nodes: G.nodes.filter(n => n.grp === undefined), edges};
+}
+
 /* ---------- flow: layered, static, lineage highlight ---------- */
 function flow() {
   const W = 230, H = 30, GX = 70, GY = 8, PAD = 16;
@@ -156,35 +199,19 @@ function flow() {
   $('sel').onchange = draw;
   let N, E, pos, scale = 1, fit = true;
   $('fit').onclick = () => { fit = !fit; $('fit').textContent = fit ? '100%' : 'Fit to width'; draw(); };
+  $('fold').onchange = draw;
 
   function draw() {
-    let keep = new Set(G.nodes.map(n => n.id)); E = G.edges;
+    const F = foldGraph($('fold').checked);
+    let keep = new Set(F.nodes.map(n => n.id)); E = F.edges;
     if ($('sel').value !== '(all)') {
-      const sc = new Set(G.nodes.filter(n => n.group === 'script' && scriptDir(n) === $('sel').value).map(n => n.id));
+      const sc = new Set(F.nodes.filter(n => n.group === 'script' && scriptDir(n) === $('sel').value).map(n => n.id));
       keep = new Set(sc);
       E.forEach(e => { if (sc.has(e.from)) keep.add(e.to); if (sc.has(e.to)) keep.add(e.from); });
     }
     E = E.filter(e => keep.has(e.from) && keep.has(e.to));
-    N = G.nodes.filter(n => keep.has(n.id));
-    // drop back edges (a script that reads what it writes makes cycles), then longest-path layering in topo order
-    const out = {}, state = {}, back = new Set();
-    E.forEach((e, i) => (out[e.from] = out[e.from] || []).push(i));
-    for (const n of N) {
-      if (state[n.id]) continue;
-      const st = [[n.id, 0]]; state[n.id] = 1;
-      while (st.length) {
-        const top = st[st.length - 1], ei = (out[top[0]] || [])[top[1]++];
-        if (ei === undefined) { state[top[0]] = 2; st.pop(); continue; }
-        const to = E[ei].to;
-        if (state[to] === 1) back.add(ei); else if (!state[to]) { state[to] = 1; st.push([to, 0]); }
-      }
-    }
-    const DE = E.filter((e, i) => !back.has(i)), indeg = {}, lay = {};
-    N.forEach(n => { indeg[n.id] = 0; lay[n.id] = 0; });
-    DE.forEach(e => indeg[e.to]++);
-    const q = N.filter(n => !indeg[n.id]).map(n => n.id), dout = {};
-    DE.forEach(e => (dout[e.from] = dout[e.from] || []).push(e.to));
-    while (q.length) { const u = q.shift(); for (const v of dout[u] || []) { lay[v] = Math.max(lay[v], lay[u] + 1); if (!--indeg[v]) q.push(v); } }
+    N = F.nodes.filter(n => keep.has(n.id));
+    const lay = layers(N.map(n => n.id), E);
     const cols = [];
     N.forEach(n => (cols[lay[n.id]] = cols[lay[n.id]] || []).push(n));
     pos = {};
@@ -211,7 +238,7 @@ function flow() {
       o += `<g class="nd" data-id="${n.id}" data-tip="${esc(n.title)}"><rect class="b" x="${p.x}" y="${p.y}" width="${W}" height="${H}" rx="6"/>` +
            `<rect x="${p.x}" y="${p.y}" width="5" height="${H}" rx="2" fill="${c}"/>` +
            (n.stale ? `<circle cx="${p.x + W - 10}" cy="${p.y + H / 2}" r="4" fill="${css('--stale')}"/>` : '') +
-           `<text x="${p.x + 12}" y="${p.y + 19}"${n.group === 'script' ? ' font-weight="600"' : ''}>${esc(n.label.length > 30 ? n.label.slice(0, 12) + '…' + n.label.slice(-17) : n.label)}</text></g>`;
+           `<text x="${p.x + 12}" y="${p.y + 19}"${n.group === 'script' ? ' font-weight="600"' : ''}>${esc(n.label.length > 28 ? n.label.slice(0, 11) + '…' + n.label.slice(-16) : n.label)}</text></g>`;
     });
     o += '</g>';
     const svg = $('fsvg'), Wn = PAD * 2 + cols.length * (W + GX) - GX, Hn = PAD * 2 + maxRows * (H + GY);
@@ -239,6 +266,10 @@ function flow() {
       p.classList.toggle('dim', keep && !on); p.classList.toggle('hl', !!on); });
   }
   $('fsvg').onclick = ev => { const g = ev.target.closest('.nd'); highlight(g ? +g.dataset.id : null); };
+  flow.open = (step, id) => {  // used by the Steps tab
+    $('sel').value = step; draw(); highlight(id);
+    if (pos[id]) $('fcard').scrollTo({left: pos[id].x * scale - 40, top: pos[id].y * scale - 80});
+  };
   $('fq').oninput = () => {
     const t = $('fq').value.toLowerCase(); if (t.length < 2) return highlight(null);
     const n = N.find(n => n.title.toLowerCase().includes(t));
@@ -345,14 +376,82 @@ function table() {
   draw();
 }
 
-/* ---------- network (vis-network loaded on demand, frozen after layout) ---------- */
+/* ---------- steps overview (vis-network, loaded on demand; fixed left-to-right layout) ---------- */
 function network() {
   const go = () => {
-    const nodes = new vis.DataSet(G.nodes.map(n => ({id: n.id, label: n.label, title: n.title, shape: 'box',
-      color: {background: css(NCOL[n.group]), border: css(NCOL[n.group])}, font: {color: '#fff', size: 12}, margin: 6})));
-    const edges = new vis.DataSet(G.edges.map(e => ({from: e.from, to: e.to, arrows: 'to', color: css(ECOL[e.kind]), dashes: e.kind !== 'writes'})));
-    const net = new vis.Network($('netbox'), {nodes, edges}, {physics: {solver: 'forceAtlas2Based', stabilization: {iterations: 400}}, interaction: {hover: true}});
-    net.once('stabilizationIterationsDone', () => net.setOptions({physics: false}));
+    const GN = G.nodes, scriptDir = n => dirOf(n.title.split('\n')[0]);
+    const writer = {};
+    G.edges.forEach(e => { if (e.kind === 'writes' && writer[e.to] === undefined) writer[e.to] = e.from; });
+    const stepOf = id => GN[id].group === 'script' ? scriptDir(GN[id])
+      : writer[id] !== undefined ? scriptDir(GN[writer[id]]) : '(external inputs)';
+    const steps = [...new Set(GN.map(n => stepOf(n.id)))];
+    const expanded = new Set();
+    // a node's box: its step when collapsed; its script (files fold into their writer) when expanded
+    const unit = id => {
+      const st = stepOf(id);
+      if (!expanded.has(st)) return 'C:' + st;
+      if (GN[id].group === 'script') return 'S:' + id;
+      return writer[id] !== undefined ? 'S:' + writer[id] : 'C:' + st;
+    };
+    const nodes = new vis.DataSet(), edges = new vis.DataSet();
+    function build() {
+      const U = {}, W = {};
+      for (const n of GN) {
+        const u = unit(n.id), x = U[u] = U[u] || {scripts: 0, files: 0, stale: 0, step: stepOf(n.id)};
+        if (n.group === 'script') x.scripts++;
+        else if (n.group !== 'group') { x.files++; if (n.stale) x.stale++; }
+      }
+      const hide = u => !$('ninp').checked && u === 'C:(external inputs)';
+      for (const u of Object.keys(U)) if (hide(u)) delete U[u];
+      for (const e of G.edges) {
+        if (e.kind === 'writes') continue;
+        const a = unit(e.from), b = unit(e.to);
+        if (a !== b && !hide(a) && !hide(b)) W[a + '>' + b] = (W[a + '>' + b] || 0) + 1;
+      }
+      const lay = layers(Object.keys(U), Object.keys(W).map(k => { const [from, to] = k.split('>'); return {from, to}; }));
+      const ink = css('--ink'), panel = css('--panel');
+      nodes.clear(); edges.clear();
+      nodes.add(Object.entries(U).map(([u, x]) => {
+        const isStep = u[0] === 'C', input = x.step === '(external inputs)';
+        const name = isStep ? (x.step === '.' ? '(project root)' : x.step) : GN[+u.slice(2)].label;
+        const nf = `${x.files} file${x.files === 1 ? '' : 's'}`;
+        const facts = (isStep && !input ? `${x.scripts} script${x.scripts === 1 ? '' : 's'} · ${nf}` : nf)
+                      + (x.stale ? ` · ⚠ ${x.stale} stale` : '');
+        const c = css(input ? '--input' : '--script');
+        return {id: u, level: lay[u], label: `${name}\n${facts}`, shape: 'box', margin: 10, borderWidth: isStep ? 2 : 1,
+          color: {background: isStep ? panel : c, border: c, highlight: {background: panel, border: ink}},
+          font: {color: isStep ? ink : '#fff', size: isStep ? 14 : 12, multi: false},
+          title: isStep ? (input ? 'files read but not written by any script' : 'click to expand') : 'click to open in Flow'};
+      }));
+      const mx = Math.max(1, ...Object.values(W));
+      edges.add(Object.entries(W).map(([k, n]) => {
+        const [a, b] = k.split('>');
+        return {from: a, to: b, arrows: 'to', width: 1 + 7 * Math.sqrt(n / mx), title: `${n} link(s)`,
+                color: {color: css('--read'), opacity: .6}, smooth: {type: 'cubicBezier', forceDirection: 'horizontal'}};
+      }));
+    }
+    build();
+    network.nodes = nodes;  // for tests
+    const net = new vis.Network($('netbox'), {nodes, edges}, {
+      layout: {hierarchical: {direction: 'LR', levelSeparation: 300, nodeSpacing: 80}},
+      physics: false, interaction: {hover: true}});
+    net.on('click', p => {
+      const u = p.nodes[0];
+      if (!u) return;
+      if (u[0] === 'C') {
+        const st = u.slice(2);
+        if (st === '(external inputs)') return;
+        expanded.has(st) ? expanded.delete(st) : expanded.add(st);
+      } else {  // a script: open its step in Flow and trace it
+        const id = +u.slice(2);
+        show('flow'); flow.open(scriptDir(GN[id]), id);
+        return;
+      }
+      build(); net.fit();
+    });
+    $('nexp').onclick = () => { steps.forEach(st => expanded.add(st)); build(); net.fit(); };
+    $('ncol').onclick = () => { expanded.clear(); build(); net.fit(); };
+    $('ninp').onchange = () => { build(); net.fit(); };
   };
   if (window.vis && window.vis.Network) return go();  // note: never name an element id="vis" (it shadows window.vis)
   const s = document.createElement('script');
