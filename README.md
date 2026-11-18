@@ -142,6 +142,15 @@ pytest                           # or: python tests/test_core.py
 python tests/test_examples.py    # score on the example projects (expected.json = ground truth)
 ```
 
+Browser check of the report: it takes screenshots of every tab, tests click-to-trace and
+the network tab, and fails on any console error. It needs Node.js and a Chromium:
+```bash
+cd tests/visual && npm install                      # once; installs puppeteer-core
+CHROME=$(command -v chromium) node visual.mjs       # example project -> tests/screenshots/
+CHROME=$(command -v chromium) node visual.mjs path/to/fms-report/index.html  # any report
+# Guix: guix shell ungoogled-chromium -- sh -c 'CHROME=$(command -v chromium) node visual.mjs'
+```
+
 ## License
 
 MIT
