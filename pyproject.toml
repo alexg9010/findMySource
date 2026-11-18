@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "findmysource"
+dynamic = ["version"]
+description = "Trace every output of a project back to the script(s) that made it, and browse the result as an interactive map."
+readme = "README.md"
+license = { text = "MIT" }
+authors = [{ name = "Alexander Blume" }]
+requires-python = ">=3.8"
+dependencies = []
+keywords = ["provenance", "lineage", "reproducibility", "research", "R", "rmarkdown"]
+classifiers = [
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3",
+  "Intended Audience :: Science/Research",
+  "Topic :: Scientific/Engineering",
+]
+
+[project.scripts]
+fms = "findmysource.cli:main"
+findmysource = "findmysource.cli:main"
+
+[tool.setuptools]
+packages = ["findmysource"]
+
+[tool.setuptools.package-data]
+findmysource = ["view.html"]
+
+[tool.setuptools.dynamic]
+version = { attr = "findmysource.__version__" }

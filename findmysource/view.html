@@ -1,0 +1,328 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>findMySource</title>
+<style>
+  :root{--bg:#f7f7f5;--panel:#fff;--ink:#1f2328;--mute:#6a737d;--line:#e3e3df;--acc:#1f8a5b;
+        --script:#1f8a5b;--file:#2f6fbf;--group:#c7792a;--input:#8a8f98;--read:#2f6fbf;--src:#8a5cc7;--stale:#d1453b;--fresh:#1f8a5b}
+  @media (prefers-color-scheme:dark){:root{--bg:#16181c;--panel:#1e2126;--ink:#e6e6e6;--mute:#9aa0a6;--line:#30343b;
+        --script:#3fb47f;--file:#5b95e0;--group:#e09a50;--input:#9aa0a6;--read:#5b95e0;--src:#a985e0;--stale:#ef6b61;--fresh:#3fb47f}}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font:13px/1.4 system-ui,-apple-system,"Segoe UI",sans-serif}
+  header{padding:14px 20px 0;display:flex;flex-wrap:wrap;gap:12px 24px;align-items:flex-end}
+  h1{margin:0;font-size:18px;letter-spacing:.2px}
+  .sub{color:var(--mute);font-size:12px}
+  .stats{display:flex;gap:8px;flex-wrap:wrap;margin-left:auto}
+  .stat{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:6px 12px;min-width:90px}
+  .stat b{display:block;font-size:17px}.stat span{color:var(--mute);font-size:11px}
+  nav{position:sticky;top:0;z-index:10;background:var(--bg);padding:12px 20px;border-bottom:1px solid var(--line);display:flex;gap:4px;flex-wrap:wrap}
+  nav button{font:inherit;padding:6px 14px;border:1px solid var(--line);background:var(--panel);color:var(--ink);border-radius:999px;cursor:pointer}
+  nav button:hover{border-color:var(--acc)}
+  nav button.on{background:var(--acc);border-color:var(--acc);color:#fff}
+  .view{display:none;padding:14px 20px}.view.on{display:block}
+  .tools{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px;color:var(--mute)}
+  .tools select,.tools input{font:inherit;padding:5px 8px;border:1px solid var(--line);border-radius:6px;background:var(--panel);color:var(--ink)}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:10px;overflow:auto;max-height:calc(100vh - 210px)}
+  .key{display:inline-flex;align-items:center;gap:5px;margin-right:10px}
+  .sw{width:11px;height:11px;border-radius:3px;display:inline-block}
+  .ln{width:22px;border-top:2px solid;display:inline-block}
+  svg text{fill:var(--ink)}
+  .nd{cursor:pointer}.nd rect.b{fill:var(--panel);stroke:var(--line)}.nd:hover rect.b{stroke:var(--ink)}
+  .nd text{font-size:11.5px;pointer-events:none}
+  .ed{fill:none;stroke-width:1.4;opacity:.55}
+  .dim{opacity:.12!important}.hl .ed,.ed.hl{opacity:1;stroke-width:2.2}
+  .axis{stroke:var(--line)}.lbl{font-size:11px}.mute{fill:var(--mute)!important}
+  table{border-collapse:collapse;width:100%}
+  th,td{padding:6px 10px;text-align:left;vertical-align:top;border-bottom:1px solid var(--line)}
+  th{position:sticky;top:0;background:var(--panel);cursor:pointer;user-select:none;white-space:nowrap}
+  tr:hover td{background:color-mix(in srgb,var(--acc) 6%,transparent)}
+  td.p{font-family:ui-monospace,Menlo,monospace;font-size:12px;word-break:break-all}
+  .chip{display:inline-block;padding:0 7px;border-radius:999px;font-size:11px;border:1px solid var(--line);margin:1px 0}
+  .chip.exact{color:var(--fresh);border-color:var(--fresh)}.chip.glob{color:var(--group);border-color:var(--group)}
+  .chip.stem-rule{color:var(--file);border-color:var(--file)}
+  #tip{position:fixed;pointer-events:none;z-index:50;max-width:520px;background:#111c;color:#fff;padding:7px 10px;border-radius:6px;
+       font:12px/1.45 ui-monospace,Menlo,monospace;white-space:pre-wrap;word-break:break-all;display:none;backdrop-filter:blur(4px)}
+  #vis{height:calc(100vh - 230px)}
+  .empty{padding:40px;text-align:center;color:var(--mute)}
+</style>
+
+<header>
+  <div><h1>findMySource</h1><div class="sub" id="sub"></div></div>
+  <div class="stats" id="stats"></div>
+</header>
+<nav>
+  <button data-v="flow">Flow</button><button data-v="timeline">Timeline</button><button data-v="matrix">Matrix</button>
+  <button data-v="table">Table</button><button data-v="network">Network</button>
+</nav>
+
+<section id="flow" class="view">
+  <div class="tools">
+    <label>pipeline step <select id="sel"></select></label>
+    <input id="fq" placeholder="find a file or script…" size="28">
+    <span><span class="key"><span class="sw" style="background:var(--script)"></span>script</span>
+      <span class="key"><span class="sw" style="background:var(--file)"></span>file</span>
+      <span class="key"><span class="sw" style="background:var(--group)"></span>folder group</span>
+      <span class="key"><span class="sw" style="background:var(--input)"></span>external input</span>
+      <span class="key"><span class="ln" style="border-color:var(--script)"></span>writes</span>
+      <span class="key"><span class="ln" style="border-color:var(--read);border-top-style:dashed"></span>reads</span>
+      <span class="key"><span class="ln" style="border-color:var(--src);border-top-style:dotted"></span>source()</span></span>
+  </div>
+  <div class="tools" style="margin-top:-4px">Left → right is execution order. Click a box to trace everything upstream and downstream; click empty space to reset.</div>
+  <div class="card" id="fcard"><svg id="fsvg"></svg></div>
+</section>
+
+<section id="timeline" class="view">
+  <div class="tools"><span class="key"><span class="sw" style="background:var(--fresh)"></span>output newer than its script</span>
+    <span class="key"><span class="sw" style="background:var(--stale)"></span>output older than the script's last change (possibly stale)</span>
+    <span class="key"><span class="sw" style="background:var(--ink);width:3px"></span>script's last change</span></div>
+  <div class="card"><svg id="tsvg"></svg></div>
+</section>
+
+<section id="matrix" class="view">
+  <div class="tools">Scripts (rows) × output folders (columns). Dot size = number of files written.</div>
+  <div class="card"><svg id="msvg"></svg></div>
+</section>
+
+<section id="table" class="view">
+  <div class="tools"><input id="q" placeholder="filter output or script…" size="34">
+    <select id="cf"><option value="">any confidence</option><option>exact</option><option>stem-rule</option><option>glob</option></select>
+    <span id="cnt"></span></div>
+  <div class="card"><table id="tb"></table></div>
+</section>
+
+<section id="network" class="view">
+  <div class="tools">Force layout, frozen after it settles. Needs internet for the vis-network library.</div>
+  <div class="card" id="vis"></div>
+</section>
+<div id="tip"></div>
+
+<script>
+const D = __DATA__, G = D.graph, $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
+const dirOf = p => p.includes('/') ? p.slice(0, p.lastIndexOf('/')) : '.';
+const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+const NCOL = {script: '--script', file: '--file', group: '--group', input: '--input'};
+const ECOL = {writes: '--script', reads: '--read', source: '--src'};
+
+/* header */
+$('sub').textContent = D.root + ' · generated ' + D.generated;
+const scriptsUsed = new Set(D.rows.flatMap(r => r.s)).size;
+$('stats').innerHTML = [[D.scripts.length, 'scripts parsed'], [scriptsUsed, 'scripts with outputs'],
+  [D.rows.length, 'matched outputs'], [D.unmatched, 'unmatched (see manifest.tsv)']]
+  .map(([n, l]) => `<div class="stat"><b>${n.toLocaleString()}</b><span>${l}</span></div>`).join('');
+
+/* one tooltip for every view: any element with data-tip */
+const tip = $('tip');
+document.addEventListener('mousemove', e => {
+  const t = e.target.closest && e.target.closest('[data-tip]');
+  if (!t) { tip.style.display = 'none'; return; }
+  tip.textContent = t.dataset.tip; tip.style.display = 'block';
+  const r = tip.getBoundingClientRect();
+  tip.style.left = Math.min(e.clientX + 14, innerWidth - r.width - 8) + 'px';
+  tip.style.top = Math.min(e.clientY + 14, innerHeight - r.height - 8) + 'px';
+});
+
+/* tabs */
+const built = {}, render = {flow, timeline, matrix, table, network};
+function show(v) {
+  if (!render[v]) v = 'flow';
+  document.querySelectorAll('.view').forEach(e => e.classList.toggle('on', e.id === v));
+  document.querySelectorAll('nav button').forEach(b => b.classList.toggle('on', b.dataset.v === v));
+  if (!built[v]) { built[v] = 1; render[v](); }
+  history.replaceState(null, '', '#' + v);
+}
+document.querySelectorAll('nav button').forEach(b => b.onclick = () => show(b.dataset.v));
+
+/* ---------- flow: layered, static, lineage highlight ---------- */
+function flow() {
+  const W = 230, H = 30, GX = 70, GY = 8, PAD = 16;
+  const scriptDir = n => dirOf(n.title.split('\n')[0]);
+  const dirs = [...new Set(G.nodes.filter(n => n.group === 'script').map(scriptDir))].sort();
+  $('sel').innerHTML = ['(all)', ...dirs].map(d => `<option>${esc(d)}</option>`).join('');
+  $('sel').value = dirs.find(d => /deconv/i.test(d)) || '(all)';
+  $('sel').onchange = draw;
+  let N, E, pos;
+
+  function draw() {
+    let keep = new Set(G.nodes.map(n => n.id)); E = G.edges;
+    if ($('sel').value !== '(all)') {
+      const sc = new Set(G.nodes.filter(n => n.group === 'script' && scriptDir(n) === $('sel').value).map(n => n.id));
+      keep = new Set(sc);
+      E.forEach(e => { if (sc.has(e.from)) keep.add(e.to); if (sc.has(e.to)) keep.add(e.from); });
+    }
+    E = E.filter(e => keep.has(e.from) && keep.has(e.to));
+    N = G.nodes.filter(n => keep.has(n.id));
+    // drop back edges (a script that reads what it writes makes cycles), then longest-path layering in topo order
+    const out = {}, state = {}, back = new Set();
+    E.forEach((e, i) => (out[e.from] = out[e.from] || []).push(i));
+    for (const n of N) {
+      if (state[n.id]) continue;
+      const st = [[n.id, 0]]; state[n.id] = 1;
+      while (st.length) {
+        const top = st[st.length - 1], ei = (out[top[0]] || [])[top[1]++];
+        if (ei === undefined) { state[top[0]] = 2; st.pop(); continue; }
+        const to = E[ei].to;
+        if (state[to] === 1) back.add(ei); else if (!state[to]) { state[to] = 1; st.push([to, 0]); }
+      }
+    }
+    const DE = E.filter((e, i) => !back.has(i)), indeg = {}, lay = {};
+    N.forEach(n => { indeg[n.id] = 0; lay[n.id] = 0; });
+    DE.forEach(e => indeg[e.to]++);
+    const q = N.filter(n => !indeg[n.id]).map(n => n.id), dout = {};
+    DE.forEach(e => (dout[e.from] = dout[e.from] || []).push(e.to));
+    while (q.length) { const u = q.shift(); for (const v of dout[u] || []) { lay[v] = Math.max(lay[v], lay[u] + 1); if (!--indeg[v]) q.push(v); } }
+    const cols = [];
+    N.forEach(n => (cols[lay[n.id]] = cols[lay[n.id]] || []).push(n));
+    pos = {};
+    let maxRows = 0;
+    const preds = {};
+    E.forEach(e => (preds[e.to] = preds[e.to] || []).push(e.from));
+    cols.forEach((col, c) => {
+      if (!col) return;
+      // barycenter ordering: sit next to what feeds you
+      const bc = n => { const p = (preds[n.id] || []).filter(x => pos[x]).map(x => pos[x].y); return p.length ? p.reduce((a, b) => a + b) / p.length : 1e9; };
+      col.sort((a, b) => bc(a) - bc(b) || a.group.localeCompare(b.group) || a.label.localeCompare(b.label));
+      col.forEach((n, i) => pos[n.id] = {x: PAD + c * (W + GX), y: PAD + i * (H + GY)});
+      maxRows = Math.max(maxRows, col.length);
+    });
+    let o = '<g id="edges">';
+    E.forEach((e, i) => {
+      const a = pos[e.from], b = pos[e.to], x1 = a.x + W, y1 = a.y + H / 2, x2 = b.x - 2, y2 = b.y + H / 2, m = (x1 + x2) / 2;
+      const dash = e.kind === 'reads' ? '5 4' : e.kind === 'source' ? '2 3' : '';
+      o += `<path class="ed" data-i="${i}" d="M${x1},${y1}C${m},${y1} ${m},${y2} ${x2},${y2}" stroke="${css(ECOL[e.kind])}" stroke-dasharray="${dash}" marker-end="url(#ar)"/>`;
+    });
+    o += '</g><g id="nodes">';
+    N.forEach(n => {
+      const p = pos[n.id], c = css(NCOL[n.group]);
+      o += `<g class="nd" data-id="${n.id}" data-tip="${esc(n.title)}"><rect class="b" x="${p.x}" y="${p.y}" width="${W}" height="${H}" rx="6"/>` +
+           `<rect x="${p.x}" y="${p.y}" width="5" height="${H}" rx="2" fill="${c}"/>` +
+           `<text x="${p.x + 12}" y="${p.y + 19}"${n.group === 'script' ? ' font-weight="600"' : ''}>${esc(n.label.length > 32 ? n.label.slice(0, 31) + '…' : n.label)}</text></g>`;
+    });
+    o += '</g>';
+    const svg = $('fsvg');
+    svg.setAttribute('width', PAD * 2 + cols.length * (W + GX) - GX);
+    svg.setAttribute('height', PAD * 2 + maxRows * (H + GY));
+    svg.innerHTML = `<defs><marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,0L10,5L0,10z" fill="${css('--mute')}"/></marker></defs>` + o +
+      (N.length ? '' : `<text x="20" y="30" class="mute">nothing linked in this step</text>`);
+  }
+
+  function lineage(id) {
+    const up = {}, dn = {};
+    E.forEach(e => { (dn[e.from] = dn[e.from] || []).push(e.to); (up[e.to] = up[e.to] || []).push(e.from); });
+    const seen = new Set([id]);
+    for (const adj of [up, dn]) { const st = [id]; while (st.length) for (const x of adj[st.pop()] || []) if (!seen.has(x)) { seen.add(x); st.push(x); } }
+    return seen;
+  }
+  function highlight(id) {
+    const keep = id == null ? null : lineage(id);
+    document.querySelectorAll('#fsvg .nd').forEach(g => g.classList.toggle('dim', keep && !keep.has(+g.dataset.id)));
+    document.querySelectorAll('#fsvg .ed').forEach(p => { const e = E[+p.dataset.i], on = keep && keep.has(e.from) && keep.has(e.to);
+      p.classList.toggle('dim', keep && !on); p.classList.toggle('hl', !!on); });
+  }
+  $('fsvg').onclick = ev => { const g = ev.target.closest('.nd'); highlight(g ? +g.dataset.id : null); };
+  $('fq').oninput = () => {
+    const t = $('fq').value.toLowerCase(); if (t.length < 2) return highlight(null);
+    const n = N.find(n => n.title.toLowerCase().includes(t));
+    if (!n) return;
+    highlight(n.id);
+    $('fcard').scrollTo({left: pos[n.id].x - 40, top: pos[n.id].y - 80, behavior: 'smooth'});
+  };
+  draw();
+}
+
+/* ---------- timeline ---------- */
+function timeline() {
+  if (!D.rows.length) { $('tsvg').outerHTML = '<div class="empty">no matched outputs</div>'; return; }
+  const by = {};
+  D.rows.forEach(r => (by[r.s[0]] = by[r.s[0]] || []).push(r));
+  const smod = Object.fromEntries(D.scripts.map(s => [s.p, s.m]));
+  const names = Object.keys(by).sort(), L = 330, RH = 20, PW = Math.max(700, innerWidth - L - 120), T = 34;
+  const t = s => new Date(s).getTime();
+  const all = D.rows.map(r => t(r.m)).concat(names.map(n => t(smod[n])).filter(x => !isNaN(x)));
+  const t0 = Math.min(...all), t1 = Math.max(...all), span = Math.max(t1 - t0, 864e5);
+  const x = ms => L + (ms - t0) / span * PW;
+  let o = '';
+  for (let i = 0; i <= 8; i++) {
+    const ms = t0 + span * i / 8, xx = x(ms);
+    o += `<line class="axis" x1="${xx}" x2="${xx}" y1="${T - 8}" y2="${T + names.length * RH}"/><text x="${xx}" y="${T - 14}" font-size="10.5" text-anchor="middle" class="mute">${new Date(ms).toISOString().slice(0, 10)}</text>`;
+  }
+  names.forEach((nm, i) => {
+    const y = T + i * RH + RH / 2, sm = t(smod[nm]);
+    o += `<g data-tip="${esc(nm)}\nlast change ${esc(smod[nm] || '?')}\n${by[nm].length} output(s)"><rect x="0" y="${y - RH / 2}" width="${L + PW}" height="${RH}" fill="transparent"/>` +
+         `<text class="lbl" x="${L - 10}" y="${y + 4}" text-anchor="end">${esc(nm.length > 46 ? '…' + nm.slice(-45) : nm)}</text></g>` +
+         `<line class="axis" x1="${L}" x2="${L + PW}" y1="${y}" y2="${y}" stroke-dasharray="2 4"/>`;
+    if (!isNaN(sm)) o += `<rect x="${x(sm) - 1.5}" y="${y - 8}" width="3" height="16" rx="1" style="fill:var(--ink)"/>`;
+    by[nm].forEach(r => {
+      const stale = !isNaN(sm) && t(r.m) < sm;
+      o += `<circle cx="${x(t(r.m))}" cy="${y}" r="4.5" fill="${css(stale ? '--stale' : '--fresh')}" fill-opacity=".7" stroke="${css('--panel')}"` +
+           ` data-tip="${esc(r.o)}\nmodified ${r.m}${stale ? '\n⚠ older than the script\'s last change' : ''}"/>`;
+    });
+  });
+  $('tsvg').setAttribute('width', L + PW + 30);
+  $('tsvg').setAttribute('height', T + names.length * RH + 16);
+  $('tsvg').innerHTML = o;
+}
+
+/* ---------- matrix ---------- */
+function matrix() {
+  if (!D.rows.length) { $('msvg').outerHTML = '<div class="empty">no matched outputs</div>'; return; }
+  const cnt = {}, rs = new Set(), cs = new Set();
+  D.rows.forEach(r => { const c = dirOf(r.o); cs.add(c); r.s.forEach(s => { rs.add(s); cnt[s + '|' + c] = (cnt[s + '|' + c] || 0) + 1; }); });
+  const R = [...rs].sort(), C = [...cs].sort(), cell = 18, L = 330, T = 200;
+  const short = c => { const p = c.split('/').slice(-2).join('/'); return p.length > 32 ? '…' + p.slice(-31) : p; };
+  let o = '';
+  C.forEach((c, j) => {
+    const x = L + j * cell + cell / 2;
+    o += `<line class="axis" x1="${x}" x2="${x}" y1="${T}" y2="${T + R.length * cell}" stroke-dasharray="2 4"/>` +
+         `<g data-tip="${esc(c)}"><text transform="translate(${x + 4},${T - 8}) rotate(-55)" class="lbl">${esc(short(c))}</text></g>`;
+  });
+  R.forEach((s, i) => {
+    const y = T + i * cell + cell / 2;
+    o += `<g data-tip="${esc(s)}"><text class="lbl" x="${L - 10}" y="${y + 4}" text-anchor="end">${esc(s.length > 46 ? '…' + s.slice(-45) : s)}</text></g>` +
+         `<line class="axis" x1="${L}" x2="${L + C.length * cell}" y1="${y}" y2="${y}" stroke-dasharray="2 4"/>`;
+    C.forEach((c, j) => { const n = cnt[s + '|' + c];
+      if (n) o += `<circle cx="${L + j * cell + cell / 2}" cy="${y}" r="${Math.min(8, 2.5 + 1.4 * Math.sqrt(n))}" fill="${css('--file')}" fill-opacity=".8" data-tip="${esc(s)}\n→ ${esc(c)}\n${n} file(s)"/>`; });
+  });
+  $('msvg').setAttribute('width', L + C.length * cell + 60);
+  $('msvg').setAttribute('height', T + R.length * cell + 16);
+  $('msvg').innerHTML = o;
+}
+
+/* ---------- table ---------- */
+function table() {
+  let key = 'm', dir = -1;
+  const val = (r, k) => k === 's' ? r.s.join(' ') : k === 'c' ? r.c[0] : k === 'sm' ? (r.sm[0] || '') : r[k];
+  const heads = [['o', 'output'], ['s', 'source script(s)'], ['c', 'confidence'], ['m', 'output modified'], ['sm', 'script last change']];
+  function draw() {
+    const q = $('q').value.toLowerCase(), cf = $('cf').value;
+    const rows = D.rows.filter(r => (!cf || r.c.includes(cf)) && (!q || (r.o + ' ' + r.s.join(' ')).toLowerCase().includes(q)))
+      .sort((a, b) => val(a, key) < val(b, key) ? -dir : val(a, key) > val(b, key) ? dir : 0);
+    $('cnt').textContent = rows.length.toLocaleString() + ' rows' + (rows.length > 2000 ? ' (first 2000 shown)' : '');
+    $('tb').innerHTML = '<tr>' + heads.map(([k, l]) => `<th data-k="${k}">${l}${key === k ? (dir > 0 ? ' ▲' : ' ▼') : ''}</th>`).join('') + '</tr>' +
+      rows.slice(0, 2000).map(r => `<tr><td class="p">${esc(r.o)}</td><td class="p">${r.s.map(esc).join('<br>')}</td>` +
+        `<td>${r.c.map(c => `<span class="chip ${c}">${c}</span>`).join('<br>')}</td><td>${r.m.replace('T', ' ')}</td><td>${r.sm.map(x => x.replace('T', ' ')).join('<br>')}</td></tr>`).join('');
+    $('tb').querySelectorAll('th').forEach(th => th.onclick = () => { dir = key === th.dataset.k ? -dir : 1; key = th.dataset.k; draw(); });
+  }
+  $('q').oninput = $('cf').onchange = draw;
+  draw();
+}
+
+/* ---------- network (vis-network loaded on demand, frozen after layout) ---------- */
+function network() {
+  const go = () => {
+    const nodes = new vis.DataSet(G.nodes.map(n => ({id: n.id, label: n.label, title: n.title, shape: 'box',
+      color: {background: css(NCOL[n.group]), border: css(NCOL[n.group])}, font: {color: '#fff', size: 12}, margin: 6})));
+    const edges = new vis.DataSet(G.edges.map(e => ({from: e.from, to: e.to, arrows: 'to', color: css(ECOL[e.kind]), dashes: e.kind !== 'writes'})));
+    const net = new vis.Network($('vis'), {nodes, edges}, {physics: {solver: 'forceAtlas2Based', stabilization: {iterations: 400}}, interaction: {hover: true}});
+    net.once('stabilizationIterationsDone', () => net.setOptions({physics: false}));
+  };
+  if (window.vis) return go();
+  const s = document.createElement('script');
+  s.src = 'https://unpkg.com/vis-network@9.1.9/standalone/umd/vis-network.min.js';
+  s.onload = go;
+  s.onerror = () => $('vis').innerHTML = '<div class="empty">vis-network could not be loaded (offline?). The other tabs work without internet.</div>';
+  document.head.appendChild(s);
+}
+
+show(location.hash.slice(1) || 'flow');
+</script>
