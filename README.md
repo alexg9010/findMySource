@@ -142,13 +142,14 @@ pytest                           # or: python tests/test_core.py
 python tests/test_examples.py    # score on the example projects (expected.json = ground truth)
 ```
 
-Browser check of the report: it takes screenshots of every tab, tests click-to-trace and
-the network tab, and fails on any console error. It needs Node.js and a Chromium:
+Browser check of the report: it takes screenshots of every tab, tests click-to-trace,
+the staleness filter and the network tab, and fails on any console error.
+[uv](https://docs.astral.sh/uv/) installs Playwright on the fly:
 ```bash
-cd tests/visual && npm install                      # once; installs puppeteer-core
-CHROME=$(command -v chromium) node visual.mjs       # example project -> tests/screenshots/
-CHROME=$(command -v chromium) node visual.mjs path/to/fms-report/index.html  # any report
-# Guix: guix shell ungoogled-chromium -- sh -c 'CHROME=$(command -v chromium) node visual.mjs'
+uvx playwright@1.64.1 install chromium     # once (add --with-deps on Debian/Ubuntu)
+uv run tests/visual.py                     # example project -> tests/screenshots/
+uv run tests/visual.py path/to/fms-report/index.html   # any report
+CHROME=$(command -v chromium) uv run tests/visual.py   # or use an installed Chromium
 ```
 
 ## License

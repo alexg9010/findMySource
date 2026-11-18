@@ -4,5 +4,4 @@ build/
 dist/
 .venv/
 fms-report/
-node_modules/
 tests/screenshots/
