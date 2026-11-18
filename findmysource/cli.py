@@ -354,6 +354,15 @@ def git_dates(root):
     dirty = {os.path.join(top, ln[3:].split(" -> ")[-1]) for ln in git("status", "--porcelain", "-uall").splitlines()}
     return dates, dirty
 
+def last_change(path, commit, dirty):
+    """Timestamp of a script's last real edit.
+    Uncommitted edits: file mtime. Otherwise the earlier of commit date and mtime: the content cannot have
+    changed after either, and this handles both a fresh clone (mtime = clone time -> commit date wins) and
+    files committed long after they were written (mtime is older -> mtime wins)."""
+    mtime = os.stat(path).st_mtime
+    d = None if path in dirty else commit.get(path)
+    return min(mtime, datetime.datetime.fromisoformat(d).timestamp()) if d else mtime
+
 def walk(roots, exclude, hidden=False):
     """Yield files under roots. Hidden folders (.git, .snakemake, ...) are skipped unless hidden=True;
     a hidden folder listed explicitly as a root is still scanned."""
@@ -401,8 +410,8 @@ def main():
         except OSError: continue
         code_of[s] = read_code(s)
         # git date unless the file has uncommitted changes (then its mtime is the real last change)
-        mod = commit.get(s) if s not in dirty else None
-        info[s] = {"modified": mod or ts(st.st_mtime), "mtime": st.st_mtime,
+        changed = last_change(s, commit, dirty)
+        info[s] = {"modified": ts(changed), "mtime": changed,
                    **generic_scan(*code_of[s], vars_only=True)}
     scripts = [s for s in scripts if s in info]
     by_name = defaultdict(list)
@@ -523,6 +532,12 @@ def main():
         if fid is None:
             fid = snode(f) if f in info else node(f, os.path.basename(f), "input", rel(f) + "\n(not a tracked output)")
         if fid != snode(s): gedges.add((fid, snode(s), k))
+    seen = defaultdict(list)
+    for n in nodes:
+        if n["group"] in ("file", "input"): seen[n["label"]].append(n)
+    for same in seen.values():
+        if len(same) > 1:  # four "deconvolution_results.RDS" -> CAD_vs_ACS/deconvolution_results.RDS, ...
+            for n in same: n["label"] = "/".join(n["title"].split("\n")[0].split("/")[-2:])
     graph = {"nodes": nodes, "edges": [{"from": x, "to": y, "kind": k} for x, y, k in sorted(gedges)]}
     json.dump(graph, open(os.path.join(a.out, "graph.json"), "w"))
 

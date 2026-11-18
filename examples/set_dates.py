@@ -6,13 +6,12 @@ without a source (raw data, orphans), which are dated 60 days before the oldest 
 
     python examples/set_dates.py examples/r-project
 """
-import datetime
 import json
 import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from findmysource.cli import git_dates  # same notion of "last change" as fms itself
+from findmysource.cli import git_dates, last_change  # same notion of "last change" as fms itself
 
 HOUR, DAY = 3600, 86400
 
@@ -23,9 +22,7 @@ def main(project):
     commit, dirty = git_dates(root)
 
     def changed(script):
-        p = os.path.join(root, script)
-        d = None if p in dirty else commit.get(p)
-        return datetime.datetime.fromisoformat(d).timestamp() if d else os.stat(p).st_mtime
+        return last_change(os.path.join(root, script), commit, dirty)
 
     scripts = {s for srcs in exp["outputs"].values() for s in srcs}
     oldest = min(changed(s) for s in scripts)
