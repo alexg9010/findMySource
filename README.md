@@ -80,32 +80,57 @@ Then open `fms-report/index.html`. Add `fms-report/` to your `.gitignore`.
 
 ## How it works
 
-1. **Parse scripts.**
-   - `fms` finds file-writing calls (`saveRDS`, `ggsave`, `pdf`, `write_csv`, …), file-reading calls (`readRDS`, `read_csv`, `fread`, …) and `source()`.
-   - It reconstructs their paths from variables, `file.path()`, `paste0()`, `sprintf()`, `here()` and Rmd `params:`, in script order.
-   - Parts that can't be known statically, such as loop variables or command-line arguments, become wildcards.
-2. **Resolve paths.**
+`fms` doesn't need to know your language's save functions. It reads scripts as text.
+
+1. **Find paths.** Every string literal is a candidate, including f-strings,
+   `${var}`, `glue()` and `.format()`. Paths are assembled from variables and
+   from joins recognised by their shape: `file.path()`, `os.path.join()`,
+   `Path(...)`, the `/` operator, `paste0()` and `sprintf()`.
+   - Variables are followed in script order.
+   - A script inherits the variables of files it `source()`s or imports, such as `config.py` or `utils.R`.
+   - Parts that can only be known at run time, such as a loop variable, become wildcards:
+     `f"{FIGURES}/hist_{feature}.svg"` becomes `figures/hist_*.svg`.
+2. **Decide the direction** from the name of the call that holds the path, in any language:
+   - *save, write, dump, export, `to_…`* → **write**
+   - *read, load, open, import, include* → **read**
+   - an `open()` mode such as `"w"` overrides the name.
+   - Anything else is a weaker **mention**.
+3. **Resolve paths.**
    - Relative paths are tried against the script's folder and the project root.
    - Symlinks and aliases are resolved, so that `results/x.rds` and `/data/…/x.rds` count as the same file.
-3. **Match.** Each output file found on disk is linked to the scripts whose paths match it:
-   - `exact`: the path matches with nothing unknown.
-   - `glob`: the path matches only through wildcards.
-   - `stem-rule`: a rendered report, such as `analysis.html`, next to its `analysis.Rmd`.
-4. **Date.**
+4. **Match and rank.** Every output file found on disk is linked to the scripts with
+   the **strongest** evidence for it:
+
+   | evidence | meaning |
+   |---|---|
+   | `write` | writes to exactly this path |
+   | `stem-rule` | rendered report (`analysis.html`) next to its `analysis.Rmd` / `.qmd` / `.ipynb` |
+   | `name` | passes this file name to a writing function, e.g. `save_table(df, "de_table")` |
+   | `write-glob` | writes to a path that matches only through wildcards |
+   | `lang-write`, `lang-glob` | language-specific fallback, currently R: known write functions without a write verb in their name, such as `pdf()` and `png()` |
+   | `mention`, `mention-glob` | the path appears in the script, but no read or write was recognised |
+
+   A script that *reads* a file is never reported as its source.
+5. **Date.**
    - An output's date is its file modification time.
    - A script's date is its last git commit, or its file time if it has uncommitted changes.
+     The timeline flags outputs that are older than their script.
+
+Scripts are recognised by extension. The default list covers R, R Markdown, Quarto, Python,
+Jupyter, shell, Snakemake, Julia, Nextflow, Perl and MATLAB, plus files named `Snakefile`
+and `Makefile`. Set `extensions` in `fms.json` to change it.
 
 ### Limits
 
-- This is static analysis. A file written under a name that is fully computed at
-  run time can only be matched through wildcards, or not at all.
-- Assignments spanning several lines are not followed.
-- Only R-family scripts are parsed today. Python, shell and Snakemake are planned.
+- This is static analysis. A file whose name is fully computed at run time,
+  or passed in as a command-line argument, can only be matched through wildcards, or not at all.
+- Variables are inherited one level deep. If `a.R` sources `b.R`, which sources `c.R`,
+  then `a.R` gets the variables of `b.R` only.
 - The Network tab loads `vis-network` from a CDN. All other tabs work offline.
 
 ## Roadmap
 
-- Parsers for Python, shell and Snakemake/Nextflow.
+- Rule-aware Snakemake/Nextflow support (inputs and outputs declared per rule).
 - Hard evidence from **DVC** and **git-lfs**. Content hashes would confirm exactly
   which version of an input produced an output, on top of today's pattern matching.
 - Incremental re-runs for very large output trees.
@@ -113,7 +138,8 @@ Then open `fms-report/index.html`. Add `fms-report/` to your `.gitignore`.
 ## Development
 
 ```bash
-python tests/test_core.py        # or: pytest
+pytest                           # or: python tests/test_core.py
+python tests/test_examples.py    # score on the example projects (expected.json = ground truth)
 ```
 
 ## License
