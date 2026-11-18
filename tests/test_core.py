@@ -5,7 +5,39 @@ import tempfile
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # run without installing
 
-from findmysource.cli import Index, make_norm, parse_script, read_code, walk
+from findmysource.cli import Index, evaluate, generic_scan, make_norm, parse_script, read_code, statements, walk
+
+
+def test_generic():
+    v = {"FIGURES": "figures", "RESULTS": "results"}
+    assert evaluate('f"{FIGURES}/hist_{feature}.svg"', v) == "figures/hist_*.svg"
+    assert evaluate('RESULTS / "raw" / "clean.parquet"', v) == "results/raw/clean.parquet"
+    assert evaluate('os.path.join(FIGURES, "umap.pdf")', v) == "figures/umap.pdf"
+    assert evaluate('"{}/x_{}.csv".format(RESULTS, k)', v) == "results/x_*.csv"
+    assert evaluate('glue::glue("{RESULTS}/a.rds")', v) == "results/a.rds"
+    assert evaluate('"${RESULTS}/b.bam"', v) == "results/b.bam"
+    assert evaluate('str(Path("data") / "c.csv")', v) == "data/c.csv"
+    # braces do not join lines; brackets do; comments and docstrings are dropped
+    assert statements('"""doc (\n"""\nfor (g in x) {\n  a <- 1  # (\n}\nf(1,\n  2)') == \
+        ['""', "for (g in x) {", "a <- 1", "}", "f(1,\n  2)"]
+    g = generic_scan('''
+from config import RESULTS
+with open(RESULTS / "metrics.json", "w") as fh:
+    json.dump(m, fh)
+df = pd.read_csv("data/raw/m.csv")   # saveRDS("commented.rds")
+save_table(de, "de_table")
+c("SampleID01")
+fig.savefig(
+    FIGURES / "roc.png", dpi=150)
+png(file.path(FIGURES, "plain_device.png"))
+''', v)
+    assert ("results/metrics.json", "write") in g["ev"]   # open(..., "w")
+    assert ("figures/roc.png", "write") in g["ev"]        # multi-line call
+    assert ("data/raw/m.csv", "read") in g["ev"]
+    assert ("figures/plain_device.png", "mention") in g["ev"]  # no verb: R fallback upgrades it
+    assert not any("commented" in p for p, _ in g["ev"])
+    assert g["names"] == {"de_table"}                      # only from writing calls, not c(...)
+    assert g["uses"] == {"config.py"}
 
 
 def test_core():
@@ -57,5 +89,6 @@ write.csv(d, here::here("tables", "t.csv"))
 
 
 if __name__ == "__main__":
+    test_generic()
     test_core()
     print("ok")

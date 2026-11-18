@@ -4,13 +4,20 @@ Usage (run from the project root):
     fms [--config fms.json] [--out fms-report]
 
 Writes <out>/manifest.tsv, <out>/graph.json and <out>/index.html (tabs: flow, timeline, matrix, table, network).
-Static analysis of R / Rmd / qmd / ipynb (R kernel): write/read calls, `source()`, simple
-variable propagation (<-, file.path, paste0, paste, sprintf, here, params:). Unknown pieces become
-wildcards. Relative paths are tried against the script's folder and the project root; symlinks
-are resolved automatically, so aliases are only needed for mount points with two spellings.
-Ceilings: loops/computed names -> wildcard matches; multi-line assignments ignored; paths from
-command-line args are unknown; only the Network tab needs internet (vis-network from a CDN).
-Config keys (JSON, all optional): scripts, outputs, exclude, aliases, extensions.
+
+Two engines, combined on one evidence scale (see RANK):
+  * generic (default, any language): string literals, f-strings / ${var} / glue / .format,
+    path joins recognised by shape (file.path, os.path.join, Path, `/`), assignments, and
+    variables inherited from source()d / imported scripts. Read or write is taken from the
+    name of the call that holds the path (save/write/dump/export/to_ vs read/load/open/...)
+    or an open() mode; anything else is a weaker "mention".
+  * R-specific fallback: known R write/read functions (e.g. pdf(), png()), used where the
+    generic engine found nothing stronger.
+Relative paths are tried against the script's folder and the project root; symlinks are
+resolved automatically, so aliases are only needed for mount points with two spellings.
+Ceilings: names computed at run time -> wildcard matches; variables inherited one level deep;
+paths from command-line args are unknown; only the Network tab needs internet (vis-network).
+Config keys (JSON, all optional): scripts, outputs, exclude, aliases, extensions, hidden.
   {"scripts": ["scripts"], "outputs": ["results", "figures"], "aliases": {"/local": "/data/local"}}
 """
 import argparse, bisect, datetime, fnmatch, json, os, re, subprocess, sys
@@ -27,30 +34,57 @@ READ = {n: 0 for n in "readRDS read_rds read_csv read.csv read.csv2 read.table r
         "read_excel fread load readLines read_xlsx read_parquet import source".split()}
 CALL_RE = re.compile(r"(?<![\w.])(" + "|".join(re.escape(n) for n in {**WRITE, **READ}) + r")\s*\(")
 FILE_KEYS = ("file", "filename", "path", "con")
-TOK_RE = re.compile(r"""\s*("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|[A-Za-z_.][\w.$@]*(?:::[A-Za-z_.][\w.$@]*)?|[(),=]|[^\s\w(),="']+|\d+\.?\d*)""")
+TOK_RE = re.compile(r"""\s*((?:[rRbBfFuU]{1,2}(?=["']))?(?:"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')|[A-Za-z_.][\w.$@]*(?:::[A-Za-z_.][\w.$@]*)?|[(),=]|[^\s\w(),="']+|\d+\.?\d*)""")
 
 
 # ---------- tiny R-expression evaluator -> pattern string ('*' = unknown) ----------
 def tokenize(s):
     return [m.group(1) for m in TOK_RE.finditer(s)]
 
+STR_RE = re.compile(r"""([rRbBfFuU]{0,2})(["'])(.*)\2$""", re.S)
+
+def _interp(body, v):
+    """{name} -> value of name, anything else in braces -> '*'."""
+    return re.sub(r"\{([^{}]*)\}", lambda m: v.get(m.group(1).strip(), "*")
+                  if re.fullmatch(r"\s*[A-Za-z_.][\w.$]*\s*", m.group(1)) else "*", body)
+
+def _string(t, v):
+    m = STR_RE.match(t)
+    if not m: return "*"
+    pre, body = m.group(1).lower(), m.group(3)
+    if "f" in pre: body = _interp(body, v)  # Python f-string
+    # shell / Snakemake style ${name}; unknown -> '*'
+    return re.sub(r"\$\{(\w+)\}", lambda x: v.get(x.group(1), "*"), body)
+
 def _prim(tok, i, v):
     if i >= len(tok): return "*", i
     t = tok[i]
-    if t[0] in "\"'": return t[1:-1], i + 1
+    if t[-1:] in "\"'" and STR_RE.match(t): return _string(t, v), i + 1
     if re.match(r"[A-Za-z_.]", t):
         if i + 1 < len(tok) and tok[i + 1] == "(":
             args, i = _args(tok, i + 2, v)
-            return _apply(t, args), i
+            return _apply(t, args, v), i
         return v.get(t, "*"), i + 1
     return "*", i + 1
 
 def _expr(tok, i, v):
     val, i = _prim(tok, i, v)
-    depth = 0
-    while i < len(tok) and not (depth == 0 and tok[i] in ",)"):  # operators/indexing: give up -> unknown
-        depth += tok[i] == "("; depth -= tok[i] == ")"
-        val, i = "*", i + 1
+    while i < len(tok) and tok[i] not in ",)":
+        t = tok[i]
+        if t in ("/", "+"):  # Path / "x", "a" + "b"
+            rhs, i = _prim(tok, i + 1, v)
+            val = val + ("/" if t == "/" else "") + rhs
+        elif t == ".format" and i + 1 < len(tok) and tok[i + 1] == "(":
+            args, i = _args(tok, i + 2, v)
+            it = iter(a for n, a in args if n is None)
+            kw = {n: a for n, a in args if n}
+            val = re.sub(r"\{([^{}]*)\}", lambda m: kw.get(m.group(1), "*") if m.group(1) else next(it, "*"), val)
+        else:  # any other operator / indexing: the value is unknown up to the end of this argument
+            depth = 0
+            while i < len(tok) and not (depth == 0 and tok[i] in ",)"):
+                depth += tok[i] == "("; depth -= tok[i] == ")"
+                i += 1
+            return "*", i
     return val, i
 
 def _args(tok, i, v):
@@ -64,25 +98,109 @@ def _args(tok, i, v):
         if i < len(tok) and tok[i] == ",": i += 1
     return args, i + 1
 
-def _apply(fn, args):
+# path builders, recognised by the shape of their name in any language
+JOIN_RE = re.compile(r"(?:^|[.:])(?:file\.path|path|join|joinpath|path_join|here)$", re.I)
+CONCAT_RE = re.compile(r"(?:^|[.:])(?:paste0|str_c|stri_c|concat|stri_paste)$", re.I)
+WRAP_RE = re.compile(r"(?:^|[.:])(?:str|as\.character|normalizePath|path\.expand|expanduser|abspath|realpath|"
+                     r"fspath|resolve|I|toString|Path)$", re.I)
+def is_builder(fn):
+    return bool(JOIN_RE.search(fn) or CONCAT_RE.search(fn) or WRAP_RE.search(fn)
+                or re.search(r"(?:^|[.:])(?:paste|sprintf|glue|str_glue)$", fn))
+
+def _apply(fn, args, v=None):
     pos = [a for n, a in args if n is None]
-    if fn.endswith("file.path"): return "/".join(pos)
-    if fn.endswith("paste0"): return "".join(pos)
-    if fn.endswith("paste"):
-        sep = dict((n, a) for n, a in args if n).get("sep", " ")
-        return sep.join(pos)
-    if fn.endswith("sprintf") and pos:
+    if JOIN_RE.search(fn): return "/".join(pos)  # file.path, os.path.join, fs::path, Path("a", "b"), here()
+    if CONCAT_RE.search(fn): return "".join(pos)
+    if re.search(r"(?:^|[.:])paste$", fn):
+        return dict((n, a) for n, a in args if n).get("sep", " ").join(pos)
+    if re.search(r"(?:^|[.:])sprintf$", fn) and pos:
         it = iter(pos[1:])
-        return re.sub(r"%[-\d.]*[sdfg]", lambda m: next(it, "*"), pos[0])
-    if fn.endswith("here"): return "/".join(pos)  # here::here() is relative to the project root
-    if fn.endswith(("normalizePath", "path.expand", "I")) and pos: return pos[0]
+        return re.sub(r"%[-\d.]*[sdfgi]", lambda m: next(it, "*"), pos[0])
+    if re.search(r"(?:^|[.:])(?:glue|str_glue)$", fn) and pos: return _interp(pos[0], v or {})
+    if WRAP_RE.search(fn) and len(pos) == 1: return pos[0]
     return "*"
 
 def evaluate(expr, v):
     return _expr(tokenize(expr), 0, v)[0]
 
 
-# ---------- script parsing ----------
+# ---------- generic engine (any language) ----------
+WRITE_VERB = re.compile(r"save|write|dump|export|^to_|store|sink|serial", re.I)
+READ_VERB = re.compile(r"read|load|open|source|import|input|scan|include|fetch", re.I)
+WRITE_MODE = re.compile(r"""^\s*(?:mode\s*=\s*)?["'](?:w|wb|wt|w\+|a|ab|a\+|x)["']\s*$""")
+READ_MODE = re.compile(r"""^\s*(?:mode\s*=\s*)?["'](?:r|rb|rt|r\+)["']\s*$""")
+CALL_ANY = re.compile(r"([A-Za-z_.][\w.$]*(?:::[A-Za-z_.][\w.$]*)?)\s*\(")
+GEN_ASG = re.compile(r"^\s*(?:export\s+|local\s+)?([A-Za-z_.][\w.$]*)\s*(?:<<-|<-|:=|=(?!=))\s*(.+)$", re.S)
+FILE_LIKE = re.compile(r"\.[A-Za-z][A-Za-z0-9]{0,7}$")
+SCRIPT_EXT = (".r", ".rmd", ".qmd", ".py", ".ipynb", ".sh", ".smk", ".jl", ".nf", ".pl", ".m")
+NAMED = re.compile(r"^\s*[A-Za-z_.][\w.]*\s*=(?!=)\s*")
+
+LEX_RE = re.compile(r""""(?:[^"\\]|\\.)*"?|'(?:[^'\\]|\\.)*'?|#.*|[()\[\]]""")
+
+def statements(code):
+    """Split code into statements: lines, joined while ( or [ is open; comments (#) removed.
+    Braces do not join lines, so the body of a for/if/function block stays separate statements."""
+    code = re.sub(r'"""[\s\S]*?"""|\'\'\'[\s\S]*?\'\'\'', '""', code)  # Python docstrings
+    out, cur, depth = [], [], 0
+    for line in code.split("\n"):
+        cut = len(line)
+        for m in LEX_RE.finditer(line):  # strings are skipped, so brackets/# inside them do not count
+            t = m.group()
+            if t[0] == "#": cut = m.start(); break
+            if t in "([": depth += 1
+            elif t in ")]": depth -= 1
+        cur.append(line[:cut])
+        if depth <= 0:
+            st = "\n".join(cur).strip()
+            if st: out.append(st)
+            cur, depth = [], 0
+    if cur and "".join(cur).strip(): out.append("\n".join(cur).strip())
+    return out
+
+def direction(fn, args):
+    if any(WRITE_MODE.match(a) for a in args): return "write"
+    if any(READ_MODE.match(a) for a in args): return "read"
+    name = re.split(r"[.:$]", fn)[-1]
+    if WRITE_VERB.search(name): return "write"
+    if READ_VERB.search(name): return "read"
+    return "mention"
+
+def generic_scan(code, v0=None, stmts=None, vars_only=False):
+    """-> dict(ev=[(pattern, write|read|mention)], names={literal}, uses={script name}, vars={}, stmts=[]).
+    vars_only: only follow assignments and script references (cheap first pass)."""
+    v = dict(v0 or {})
+    ev, names, uses = [], set(), set()
+    stmts = statements(code) if stmts is None else stmts
+    for st in stmts:
+        for m in re.finditer(r"""["']([^"'\n]+)["']""", st):  # scripts referenced by name (source("x.R"), "python y.py")
+            words = m.group(1).split()
+            if words and words[-1].lower().endswith(SCRIPT_EXT): uses.add(os.path.basename(words[-1]))
+        for m in re.finditer(r"^\s*(?:from\s+([\w.]+)\s+import|import\s+([\w.]+))", st):
+            uses.add((m.group(1) or m.group(2)).split(".")[-1] + ".py")
+        if not vars_only:
+            for cm in CALL_ANY.finditer(st):
+                fn = cm.group(1)
+                if is_builder(fn): continue  # evaluated as part of the enclosing argument
+                args, _ = split_call(st, cm.end())
+                kind = direction(fn, args)
+                for a in args:
+                    a = NAMED.sub("", a, count=1)
+                    p = evaluate(a, v)
+                    if FILE_LIKE.search(p) and len(p.replace("*", "")) >= 3 and "://" not in p:
+                        ev.append((p, kind))
+                    lit = re.fullmatch(r"""\s*["']([\w.\-]{4,})["']\s*""", a)
+                    if lit and kind == "write" and not FILE_LIKE.search(lit.group(1)):
+                        names.add(lit.group(1))  # save_table(df, "de_table") -> de_table.*
+        m = GEN_ASG.match(st)
+        if m:
+            val = evaluate(m.group(2), v)
+            v[m.group(1)] = val
+            if not vars_only and FILE_LIKE.search(val) and len(val.replace("*", "")) >= 3 and "://" not in val:
+                ev.append((val, "mention"))
+    return {"ev": sorted(set(ev)), "names": names, "uses": uses, "vars": v, "stmts": stmts}
+
+
+# ---------- R-specific fallback ----------
 def read_code(path):
     """Return (code, params-dict). Rmd/qmd -> chunks; ipynb -> code cells; else whole file."""
     try: txt = open(path, errors="replace").read()
@@ -107,23 +225,23 @@ def read_code(path):
                         for c in nb.get("cells", []) if c.get("cell_type") == "code")
     return txt, params
 
+SPLIT_RE = re.compile(r""""(?:[^"\\]|\\.)*"?|'(?:[^'\\]|\\.)*'?|[()\[\]{},]""")
+
 def split_call(code, start):
     """code[start] is just after '(' -> (list of top-level arg strings, end index)."""
-    depth, q, args, cur, i = 1, None, [], [], start
-    while i < len(code) and depth:
-        c = code[i]
-        if q:
-            if c == "\\": cur.append(c); i += 1; c = code[i] if i < len(code) else ""
-            elif c == q: q = None
-        elif c in "\"'": q = c
-        elif c in "([{": depth += 1
-        elif c in ")]}": depth -= 1
-        if depth == 0: break
-        if c == "," and depth == 1 and not q: args.append("".join(cur)); cur = []
-        else: cur.append(c)
-        i += 1
-    args.append("".join(cur))
-    return [a.strip() for a in args], i
+    depth, args, last = 1, [], start
+    for m in SPLIT_RE.finditer(code, start):
+        t = m.group()
+        if t in "([{": depth += 1
+        elif t in ")]}":
+            depth -= 1
+            if depth == 0:
+                args.append(code[last:m.start()])
+                return [a.strip() for a in args], m.start()
+        elif t == "," and depth == 1:
+            args.append(code[last:m.start()]); last = m.end()
+    args.append(code[last:])
+    return [a.strip() for a in args], len(code)
 
 def file_arg(args, idx):
     pos = 0
@@ -191,9 +309,11 @@ class Index:
         self.files = sorted(files)
         self.by_base = defaultdict(list)
         self.by_dir = defaultdict(list)
+        self.by_ext = defaultdict(list)
         for f in self.files:
             self.by_base[os.path.basename(f)].append(f)
             self.by_dir[os.path.dirname(f)].append(f)
+            self.by_ext[os.path.splitext(f)[1]].append(f)
     def match(self, pat):
         """-> (list of files, 'exact'|'glob')"""
         if "*" not in pat:
@@ -211,7 +331,9 @@ class Index:
             lo = bisect.bisect_left(self.files, pre)
             hi = bisect.bisect_left(self.files, pre + "\U0010ffff")
             cands = self.files[lo:hi]
-        else: cands = self.files
+        else:
+            ext = os.path.splitext(pat)[1]
+            cands = self.by_ext.get(ext, []) if ext and "*" not in ext else self.files
         tail = pat.rsplit("*", 1)[1]  # cheap literal-suffix filter before the regex
         return [f for f in cands if f.endswith(tail) and rx.fullmatch(f)], "glob"
 
@@ -246,6 +368,10 @@ def walk(roots, exclude, hidden=False):
 
 
 # ---------- main ----------
+# evidence that a script made a file, strongest first. Only the best kind found for a file is reported.
+RANK = {"write": 0, "stem-rule": 1, "name": 2, "write-glob": 3, "lang-write": 4, "lang-glob": 5,
+        "mention": 6, "mention-glob": 7}
+
 def main():
     ap = argparse.ArgumentParser(prog="fms", description="findMySource: trace outputs back to the scripts that made them.")
     ap.add_argument("--config", default="fms.json")
@@ -257,7 +383,7 @@ def main():
     tpl_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "view.html")
     if not os.path.exists(tpl_path): sys.exit(f"missing template {tpl_path} (broken install?)")
     root = os.path.realpath(".")
-    exts = tuple(e.lower() for e in cfg.get("extensions", [".r", ".rmd", ".qmd", ".ipynb"]))
+    exts = tuple(e.lower() for e in cfg.get("extensions", list(SCRIPT_EXT) + ["snakefile", "makefile"]))
     exclude = cfg.get("exclude", ["rstudio-server-db", "rstudio_state", "__pycache__", "*_cache",
                                   "*.RData", ".Rhistory", "#*#", "%", ".DS_Store"])
     hidden = cfg.get("hidden", False)  # scan hidden folders too
@@ -266,18 +392,31 @@ def main():
     resolve = make_norm(aliases, root)
     rel = lambda p: os.path.relpath(p, root) if p.startswith(root + "/") else p
 
-    # 1. scripts
+    # 1. scripts: generic engine twice (own variables first, then with variables of source()d/imported scripts)
     commit, dirty = git_dates(root)
     scripts = sorted({s for s in walk(cfg.get("scripts", ["."]), exclude, hidden) if s.lower().endswith(exts)})
-    info = {}
+    info, code_of = {}, {}
     for s in scripts:
-        code, params = read_code(s)
         try: st = os.stat(s)
         except OSError: continue
+        code_of[s] = read_code(s)
         # git date unless the file has uncommitted changes (then its mtime is the real last change)
         mod = commit.get(s) if s not in dirty else None
-        info[s] = {**parse_script(code, params), "modified": mod or ts(st.st_mtime), "mtime": st.st_mtime}
+        info[s] = {"modified": mod or ts(st.st_mtime), "mtime": st.st_mtime,
+                   **generic_scan(*code_of[s], vars_only=True)}
     scripts = [s for s in scripts if s in info]
+    by_name = defaultdict(list)
+    for s in scripts: by_name[os.path.basename(s)].append(s)
+    for s in scripts:
+        used = []
+        for u in info[s]["uses"]:
+            cands = [x for x in by_name.get(u, []) if x != s]
+            same = [x for x in cands if os.path.dirname(x) == os.path.dirname(s)]
+            used += same or cands[:1]  # ponytail: one level deep; follow chains if configs source configs
+        code, params = code_of[s]
+        inherited = {k: val for u in used for k, val in info[u]["vars"].items()}
+        g = generic_scan(code, {**inherited, **params}, stmts=info[s]["stmts"])
+        info[s].update(g, used=used, lang=parse_script(code, params))
     print(f"parsed {len(scripts)} scripts", file=sys.stderr)
 
     # 2. files (one stat each)
@@ -303,35 +442,52 @@ def main():
             if hit: return hit, conf
         return idx.match(cands[-1]) if len(cands) > 1 else ([], "exact")
 
-    # 3. link
-    src_of = defaultdict(dict)  # output -> {script: confidence}
-    edges, reads_of = [], defaultdict(set)
+    # 3. link: every piece of evidence gets a RANK; an output's sources are the scripts with the best rank
+    src_of = defaultdict(dict)  # output -> {script: label}
+    def add(f, s, label):
+        if f in info or f == s: return
+        if RANK[label] < RANK.get(src_of[f].get(s), 99): src_of[f][s] = label
+    edges, reads_of = set(), defaultdict(set)
+    by_stem = defaultdict(list)
+    for f in stat: by_stem[os.path.basename(f).split(".")[0]].append(f)
     for s, d in info.items():
-        for p in d["writes"]:
+        for p, kind in d["ev"]:
             hit, conf = match(p, s)
-            for f in hit:
-                if f not in info: src_of[f].setdefault(s, conf)
-        for p in d["reads"]:
-            hit, _ = match(p, s)
-            for f in hit: reads_of[s].add(f); edges.append((f, s, "reads"))
-            if not hit and "*" not in p:  # external input that does not exist in the scanned dirs
-                edges.append((resolve(p, s)[0], s, "reads"))
-        for p in d["sources"]:
+            if kind == "read":
+                for f in hit: reads_of[s].add(f); edges.add((f, s, "reads"))
+                if not hit and "*" not in p: edges.add((resolve(p, s)[0], s, "reads"))  # input outside the scan
+                continue
+            for f in hit: add(f, s, kind + ("-glob" if conf == "glob" else ""))
+        for n in d["names"]:
+            for f in by_stem.get(n, []): add(f, s, "name")
+        for p in d["lang"]["writes"]:  # R-specific fallback: only wins where the generic evidence is weaker
+            hit, conf = match(p, s)
+            for f in hit: add(f, s, "lang-write" if conf == "exact" else "lang-glob")
+        for p in d["lang"]["reads"]:
+            for f in match(p, s)[0]: reads_of[s].add(f); edges.add((f, s, "reads"))
+        for u in d["used"]: edges.add((u, s, "source"))
+        for p in d["lang"]["sources"]:
             for f in match(p, s)[0]:
-                if f in info and f != s: edges.append((f, s, "source"))
+                if f in info and f != s: edges.add((f, s, "source"))
     for f, ss in rep.items():
-        for s in ss: src_of[f][s] = "stem-rule"
-    rank = {"exact": 0, "stem-rule": 1, "glob": 2}
+        for s in ss: add(f, s, "stem-rule")
+    for s, fs in reads_of.items():  # a script that reads a file is not its source because it also names it
+        for f in fs:
+            if src_of[f].get(s, "").startswith(("mention", "name")): del src_of[f][s]
+    for f in list(src_of):  # keep only the strongest kind of evidence per output
+        best = min((RANK[l] for l in src_of[f].values()), default=None)
+        src_of[f] = {s: l for s, l in src_of[f].items() if RANK[l] == best}
+        if not src_of[f]: del src_of[f]
 
     # 4. manifest
     os.makedirs(a.out, exist_ok=True)
     rows, outputs = [], sorted(set(stat) - set(info))
     with open(os.path.join(a.out, "manifest.tsv"), "w") as m:
-        m.write("output\tsources\tconfidence\toutput_created\toutput_modified\tsource_modified\tinputs\n")
+        m.write("output\tsources\tevidence\toutput_created\toutput_modified\tsource_modified\tinputs\n")
         for f in outputs:
             st, ss = stat[f], src_of.get(f, {})
             # best confidence first; ties -> script whose last change is closest before the output
-            order = sorted(ss, key=lambda s: (rank[ss[s]], info[s]["mtime"] > st.st_mtime, -info[s]["mtime"]))
+            order = sorted(ss, key=lambda s: (info[s]["mtime"] > st.st_mtime, -info[s]["mtime"]))
             m.write("\t".join([
                 rel(f), ";".join(rel(s) for s in order), ";".join(ss[s] for s in order) or "unmatched",
                 ts(created(st)), ts(st.st_mtime), ";".join(info[s]["modified"] for s in order),
@@ -361,7 +517,7 @@ def main():
         else:
             for f in fl:
                 gedges.add((sn, node(f, os.path.basename(f), "file", f"{rel(f)}\nmodified {ts(stat[f].st_mtime)}"), "writes"))
-    for f, s, k in edges:
+    for f, s, k in sorted(edges):
         fid = nid.get(f, member.get(f))
         if fid is None and s not in nid and k == "reads": continue  # input of an unconnected script
         if fid is None:
