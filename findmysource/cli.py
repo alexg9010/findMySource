@@ -377,6 +377,9 @@ def walk(roots, exclude, hidden=False):
 
 
 # ---------- main ----------
+# an output is "possibly stale" when its script was edited more than this after it was written
+# (edits within the hour are usually "ran it, then fixed a comment"). Mirrored by STALE_MS in view.html.
+STALE_SECONDS = 3600
 # evidence that a script made a file, strongest first. Only the best kind found for a file is reported.
 RANK = {"write": 0, "stem-rule": 1, "name": 2, "write-glob": 3, "lang-write": 4, "lang-glob": 5,
         "mention": 6, "mention-glob": 7}
@@ -490,16 +493,19 @@ def main():
 
     # 4. manifest
     os.makedirs(a.out, exist_ok=True)
-    rows, outputs = [], sorted(set(stat) - set(info))
+    rows, outputs, stale = [], sorted(set(stat) - set(info)), {}
     with open(os.path.join(a.out, "manifest.tsv"), "w") as m:
-        m.write("output\tsources\tevidence\toutput_created\toutput_modified\tsource_modified\tinputs\n")
+        m.write("output\tsources\tevidence\toutput_created\toutput_modified\tsource_modified\tstale_days\tinputs\n")
         for f in outputs:
             st, ss = stat[f], src_of.get(f, {})
             # best confidence first; ties -> script whose last change is closest before the output
             order = sorted(ss, key=lambda s: (info[s]["mtime"] > st.st_mtime, -info[s]["mtime"]))
+            gap = max((info[s]["mtime"] for s in order), default=0) - st.st_mtime
+            if order and gap > STALE_SECONDS: stale[f] = round(gap / 86400, 1)
             m.write("\t".join([
                 rel(f), ";".join(rel(s) for s in order), ";".join(ss[s] for s in order) or "unmatched",
                 ts(created(st)), ts(st.st_mtime), ";".join(info[s]["modified"] for s in order),
+                str(stale.get(f, "")),
                 ";".join(sorted({rel(i) for s in order for i in reads_of[s]}))[:2000]]) + "\n")
             if order: rows.append({"o": rel(f), "s": [rel(x) for x in order], "c": [ss[x] for x in order],
                                    "m": ts(st.st_mtime), "sm": [info[x]["modified"] for x in order]})
@@ -519,13 +525,20 @@ def main():
     for (s, d), fl in sorted(grp.items()):
         sn = snode(s)
         if len(fl) > 15:
+            n_stale = sum(f in stale for f in fl)
             g = node((s, d), f"{os.path.basename(d)}/ ({len(fl)} files)", "group",
-                     rel(d) + "\n" + "\n".join(sorted(os.path.basename(x) for x in fl)[:60]))
+                     rel(d) + (f"\n⚠ {n_stale} possibly stale" if n_stale else "") + "\n" +
+                     "\n".join(sorted(os.path.basename(x) for x in fl)[:60]))
+            if n_stale: nodes[g]["stale"] = n_stale
             gedges.add((sn, g, "writes"))
             for f in fl: member.setdefault(f, g)
         else:
             for f in fl:
-                gedges.add((sn, node(f, os.path.basename(f), "file", f"{rel(f)}\nmodified {ts(stat[f].st_mtime)}"), "writes"))
+                tip = f"{rel(f)}\nmodified {ts(stat[f].st_mtime)}"
+                if f in stale: tip += f"\n⚠ script edited {stale[f]:g} days later: possibly stale"
+                fid = node(f, os.path.basename(f), "file", tip)
+                if f in stale: nodes[fid]["stale"] = stale[f]
+                gedges.add((sn, fid, "writes"))
     for f, s, k in sorted(edges):
         fid = nid.get(f, member.get(f))
         if fid is None and s not in nid and k == "reads": continue  # input of an unconnected script

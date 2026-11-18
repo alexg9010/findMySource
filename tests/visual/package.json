@@ -1,6 +1,0 @@
-{
-  "private": true,
-  "description": "Browser checks for the findMySource report (dev only)",
-  "type": "module",
-  "devDependencies": { "puppeteer-core": "25.16.0" }
-}

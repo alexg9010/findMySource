@@ -67,6 +67,7 @@
       <span class="key"><span class="sw" style="background:var(--file)"></span>file</span>
       <span class="key"><span class="sw" style="background:var(--group)"></span>folder group</span>
       <span class="key"><span class="sw" style="background:var(--input)"></span>external input</span>
+      <span class="key"><span class="sw" style="background:var(--stale);border-radius:50%"></span>possibly stale</span>
       <span class="key"><span class="ln" style="border-color:var(--script)"></span>writes</span>
       <span class="key"><span class="ln" style="border-color:var(--read);border-top-style:dashed"></span>reads</span>
       <span class="key"><span class="ln" style="border-color:var(--src);border-top-style:dotted"></span>source()</span></span>
@@ -76,7 +77,8 @@
 </section>
 
 <section id="timeline" class="view">
-  <div class="tools"><span class="key"><span class="sw" style="background:var(--fresh)"></span>output newer than its script</span>
+  <div class="tools"><label><input type="checkbox" id="tstale"> only possibly stale</label>
+    <span class="key"><span class="sw" style="background:var(--fresh)"></span>output newer than its script</span>
     <span class="key"><span class="sw" style="background:var(--stale)"></span>script edited more than 1 h after the output (possibly stale)</span>
     <span class="key"><span class="sw" style="background:var(--ink);width:3px"></span>script's last change</span></div>
   <div class="card"><svg id="tsvg"></svg></div>
@@ -90,6 +92,7 @@
 <section id="table" class="view">
   <div class="tools"><input id="q" placeholder="filter output or script…" size="34">
     <select id="cf"><option value="">any evidence</option></select>
+    <select id="sf"><option value="">any date</option><option value="stale">possibly stale</option><option value="fresh">up to date</option></select>
     <span id="cnt"></span></div>
   <div class="card"><table id="tb"></table></div>
 </section>
@@ -117,7 +120,8 @@ const ECOL = {writes: '--script', reads: '--read', source: '--src'};
 $('sub').textContent = D.root + ' · generated ' + D.generated;
 const scriptsUsed = new Set(D.rows.flatMap(r => r.s)).size;
 $('stats').innerHTML = [[D.scripts.length, 'scripts parsed'], [scriptsUsed, 'scripts with outputs'],
-  [D.rows.length, 'matched outputs'], [D.unmatched, 'unmatched (see manifest.tsv)']]
+  [D.rows.length, 'matched outputs'], [D.rows.filter(staleBy).length, 'possibly stale'],
+  [D.unmatched, 'unmatched (see manifest.tsv)']]
   .map(([n, l]) => `<div class="stat"><b>${n.toLocaleString()}</b><span>${l}</span></div>`).join('');
 
 /* one tooltip for every view: any element with data-tip */
@@ -206,7 +210,8 @@ function flow() {
       const p = pos[n.id], c = css(NCOL[n.group]);
       o += `<g class="nd" data-id="${n.id}" data-tip="${esc(n.title)}"><rect class="b" x="${p.x}" y="${p.y}" width="${W}" height="${H}" rx="6"/>` +
            `<rect x="${p.x}" y="${p.y}" width="5" height="${H}" rx="2" fill="${c}"/>` +
-           `<text x="${p.x + 12}" y="${p.y + 19}"${n.group === 'script' ? ' font-weight="600"' : ''}>${esc(n.label.length > 32 ? n.label.slice(0, 13) + '…' + n.label.slice(-18) : n.label)}</text></g>`;
+           (n.stale ? `<circle cx="${p.x + W - 10}" cy="${p.y + H / 2}" r="4" fill="${css('--stale')}"/>` : '') +
+           `<text x="${p.x + 12}" y="${p.y + 19}"${n.group === 'script' ? ' font-weight="600"' : ''}>${esc(n.label.length > 30 ? n.label.slice(0, 12) + '…' + n.label.slice(-17) : n.label)}</text></g>`;
     });
     o += '</g>';
     const svg = $('fsvg'), Wn = PAD * 2 + cols.length * (W + GX) - GX, Hn = PAD * 2 + maxRows * (H + GY);
@@ -247,8 +252,12 @@ function flow() {
 /* ---------- timeline ---------- */
 function timeline() {
   if (!D.rows.length) { $('tsvg').outerHTML = '<div class="empty">no matched outputs</div>'; return; }
+  $('tstale').onchange = drawTimeline;
+  drawTimeline();
+}
+function drawTimeline() {
   const by = {};
-  D.rows.forEach(r => (by[r.s[0]] = by[r.s[0]] || []).push(r));
+  D.rows.filter(r => !$('tstale').checked || staleBy(r)).forEach(r => (by[r.s[0]] = by[r.s[0]] || []).push(r));
   const smod = Object.fromEntries(D.scripts.map(s => [s.p, s.m]));
   const names = Object.keys(by).sort(), L = 330, RH = 20, PW = Math.max(700, innerWidth - L - 120), T = 34;
   const t = s => new Date(s).getTime();
@@ -267,14 +276,14 @@ function timeline() {
          `<line class="axis" x1="${L}" x2="${L + PW}" y1="${y}" y2="${y}" stroke-dasharray="2 4"/>`;
     if (!isNaN(sm)) o += `<rect x="${x(sm) - 1.5}" y="${y - 8}" width="3" height="16" rx="1" style="fill:var(--ink)"/>`;
     by[nm].forEach(r => {
-      const gap = isNaN(sm) ? 0 : sm - t(r.m), stale = gap > STALE_MS;
+      const gap = staleBy(r), stale = gap > 0;
       o += `<circle cx="${x(t(r.m))}" cy="${y}" r="4.5" fill="${css(stale ? '--stale' : '--fresh')}" fill-opacity=".7" stroke="${css('--panel')}"` +
            ` data-tip="${esc(r.o)}\nmodified ${r.m}${stale ? `\n⚠ script edited ${ago(gap)} later: possibly stale` : ''}"/>`;
     });
   });
   $('tsvg').setAttribute('width', L + PW + 30);
   $('tsvg').setAttribute('height', T + names.length * RH + 16);
-  $('tsvg').innerHTML = o;
+  $('tsvg').innerHTML = names.length ? o : '<text x="20" y="30" class="mute">nothing is possibly stale</text>';
 }
 
 /* ---------- matrix ---------- */
@@ -320,8 +329,9 @@ function table() {
   const val = (r, k) => k === 's' ? r.s.join(' ') : k === 'c' ? r.c[0] : k === 'sm' ? (r.sm[0] || '') : r[k];
   const heads = [['o', 'output'], ['s', 'source script(s)'], ['c', 'evidence'], ['m', 'output modified'], ['sm', 'script last change']];
   function draw() {
-    const q = $('q').value.toLowerCase(), cf = $('cf').value;
-    const rows = D.rows.filter(r => (!cf || r.c.includes(cf)) && (!q || (r.o + ' ' + r.s.join(' ')).toLowerCase().includes(q)))
+    const q = $('q').value.toLowerCase(), cf = $('cf').value, sf = $('sf').value;
+    const rows = D.rows.filter(r => (!cf || r.c.includes(cf)) && (!sf || (sf === 'stale') === !!staleBy(r))
+                                    && (!q || (r.o + ' ' + r.s.join(' ')).toLowerCase().includes(q)))
       .sort((a, b) => val(a, key) < val(b, key) ? -dir : val(a, key) > val(b, key) ? dir : 0);
     $('cnt').textContent = rows.length.toLocaleString() + ' rows' + (rows.length > 2000 ? ' (first 2000 shown)' : '');
     $('tb').innerHTML = '<tr>' + heads.map(([k, l]) => `<th data-k="${k}">${l}${key === k ? (dir > 0 ? ' ▲' : ' ▼') : ''}</th>`).join('') + '</tr>' +
@@ -331,7 +341,7 @@ function table() {
           : `<td>${r.m.replace('T', ' ')}</td>`) + `<td>${r.sm.map(x => x.replace('T', ' ')).join('<br>')}</td></tr>`).join('');
     $('tb').querySelectorAll('th').forEach(th => th.onclick = () => { dir = key === th.dataset.k ? -dir : 1; key = th.dataset.k; draw(); });
   }
-  $('q').oninput = $('cf').onchange = draw;
+  $('q').oninput = $('cf').onchange = $('sf').onchange = draw;
   draw();
 }
 
