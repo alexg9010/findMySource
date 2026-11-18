@@ -38,8 +38,8 @@
   tr:hover td{background:color-mix(in srgb,var(--acc) 6%,transparent)}
   td.p{font-family:ui-monospace,Menlo,monospace;font-size:12px;word-break:break-all}
   .chip{display:inline-block;padding:0 7px;border-radius:999px;font-size:11px;border:1px solid var(--line);margin:1px 0}
-  .chip.exact{color:var(--fresh);border-color:var(--fresh)}.chip.glob{color:var(--group);border-color:var(--group)}
-  .chip.stem-rule{color:var(--file);border-color:var(--file)}
+  .chip.strong{color:var(--fresh);border-color:var(--fresh)}.chip.medium{color:var(--group);border-color:var(--group)}
+  .chip.weak{color:var(--mute)}
   #tip{position:fixed;pointer-events:none;z-index:50;max-width:520px;background:#111c;color:#fff;padding:7px 10px;border-radius:6px;
        font:12px/1.45 ui-monospace,Menlo,monospace;white-space:pre-wrap;word-break:break-all;display:none;backdrop-filter:blur(4px)}
   #vis{height:calc(100vh - 230px)}
@@ -85,7 +85,7 @@
 
 <section id="table" class="view">
   <div class="tools"><input id="q" placeholder="filter output or script…" size="34">
-    <select id="cf"><option value="">any confidence</option><option>exact</option><option>stem-rule</option><option>glob</option></select>
+    <select id="cf"><option value="">any evidence</option></select>
     <span id="cnt"></span></div>
   <div class="card"><table id="tb"></table></div>
 </section>
@@ -289,10 +289,21 @@ function matrix() {
 }
 
 /* ---------- table ---------- */
+const EVID = {  // label -> [strength, explanation]; strongest first, mirrors RANK in cli.py
+  'write': ['strong', 'the script writes to exactly this path'],
+  'stem-rule': ['strong', 'rendered report next to its .Rmd/.qmd/.ipynb'],
+  'name': ['strong', 'the script passes this file name to a writing function, e.g. save_table(df, "de_table")'],
+  'write-glob': ['medium', 'the script writes to a path that matches with wildcards (loop or run-time name)'],
+  'lang-write': ['medium', 'R fallback: a known R write function (e.g. pdf(), png()) with this exact path'],
+  'lang-glob': ['medium', 'R fallback: a known R write function, matched with wildcards'],
+  'mention': ['weak', 'the path appears in the script, but no read/write call was recognised'],
+  'mention-glob': ['weak', 'the path appears with wildcards, but no read/write call was recognised']};
+const chip = c => `<span class="chip ${(EVID[c] || ['weak'])[0]}" data-tip="${esc((EVID[c] || ['', c])[1])}">${esc(c)}</span>`;
 function table() {
+  $('cf').innerHTML = '<option value="">any evidence</option>' + Object.keys(EVID).map(k => `<option>${k}</option>`).join('');
   let key = 'm', dir = -1;
   const val = (r, k) => k === 's' ? r.s.join(' ') : k === 'c' ? r.c[0] : k === 'sm' ? (r.sm[0] || '') : r[k];
-  const heads = [['o', 'output'], ['s', 'source script(s)'], ['c', 'confidence'], ['m', 'output modified'], ['sm', 'script last change']];
+  const heads = [['o', 'output'], ['s', 'source script(s)'], ['c', 'evidence'], ['m', 'output modified'], ['sm', 'script last change']];
   function draw() {
     const q = $('q').value.toLowerCase(), cf = $('cf').value;
     const rows = D.rows.filter(r => (!cf || r.c.includes(cf)) && (!q || (r.o + ' ' + r.s.join(' ')).toLowerCase().includes(q)))
@@ -300,7 +311,7 @@ function table() {
     $('cnt').textContent = rows.length.toLocaleString() + ' rows' + (rows.length > 2000 ? ' (first 2000 shown)' : '');
     $('tb').innerHTML = '<tr>' + heads.map(([k, l]) => `<th data-k="${k}">${l}${key === k ? (dir > 0 ? ' ▲' : ' ▼') : ''}</th>`).join('') + '</tr>' +
       rows.slice(0, 2000).map(r => `<tr><td class="p">${esc(r.o)}</td><td class="p">${r.s.map(esc).join('<br>')}</td>` +
-        `<td>${r.c.map(c => `<span class="chip ${c}">${c}</span>`).join('<br>')}</td><td>${r.m.replace('T', ' ')}</td><td>${r.sm.map(x => x.replace('T', ' ')).join('<br>')}</td></tr>`).join('');
+        `<td>${r.c.map(chip).join('<br>')}</td><td>${r.m.replace('T', ' ')}</td><td>${r.sm.map(x => x.replace('T', ' ')).join('<br>')}</td></tr>`).join('');
     $('tb').querySelectorAll('th').forEach(th => th.onclick = () => { dir = key === th.dataset.k ? -dir : 1; key = th.dataset.k; draw(); });
   }
   $('q').oninput = $('cf').onchange = draw;
