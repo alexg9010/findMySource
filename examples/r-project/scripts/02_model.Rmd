@@ -1,0 +1,21 @@
+---
+title: "Differential model"
+output: html_document
+params:
+  out_dir:
+    value: "results"
+  alpha: 0.05
+---
+
+```{r setup}
+# knitr runs in the folder of this Rmd, hence the "..".
+source("utils.R")
+clean <- readRDS(file.path("..", params$out_dir, "clean.rds"))
+```
+
+```{r model}
+fit <- glm(count ~ condition, data = clean, family = poisson)
+saveRDS(fit, file.path("..", params$out_dir, "model.rds"))
+de <- broom::tidy(fit)
+save_table(de, "de_table")
+```

@@ -1,0 +1,11 @@
+{
+  "scripts": [
+    "scripts"
+  ],
+  "outputs": [
+    "data",
+    "results",
+    "figures",
+    "scripts"
+  ]
+}

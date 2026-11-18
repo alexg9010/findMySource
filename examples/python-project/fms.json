@@ -1,0 +1,16 @@
+{
+  "scripts": [
+    "scripts",
+    "notebooks"
+  ],
+  "outputs": [
+    "data",
+    "results",
+    "figures",
+    "notebooks"
+  ],
+  "extensions": [
+    ".py",
+    ".ipynb"
+  ]
+}

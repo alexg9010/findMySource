@@ -1,5 +1,0 @@
-{
-  "scripts": ["scripts", "analysis", "notebooks"],
-  "outputs": ["results", "figures", "data"],
-  "aliases": { "/local": "/data/local" }
-}

@@ -1,0 +1,38 @@
+{
+  "_comment": "Ground truth: which script really writes each output. [] = orphan (no script). 'stale' outputs get a date before their script's last change (see examples/set_dates.py).",
+  "outputs": {
+    "results/clean.rds": [
+      "scripts/01_load.R"
+    ],
+    "results/model.rds": [
+      "scripts/02_model.Rmd"
+    ],
+    "results/de_table.tsv": [
+      "scripts/02_model.Rmd"
+    ],
+    "scripts/02_model.html": [
+      "scripts/02_model.Rmd"
+    ],
+    "figures/volcano.pdf": [
+      "scripts/03_figures.R"
+    ],
+    "figures/heatmap_GATA4.png": [
+      "scripts/03_figures.R"
+    ],
+    "figures/heatmap_MYH6.png": [
+      "scripts/03_figures.R"
+    ],
+    "figures/heatmap_TNNT2.png": [
+      "scripts/03_figures.R"
+    ],
+    "figures/qc/pca.png": [
+      "scripts/03_figures.R"
+    ],
+    "figures/old_draft.png": [],
+    "data/raw/counts.csv": [],
+    "data/raw/samples.xlsx": []
+  },
+  "stale": [
+    "figures/qc/pca.png"
+  ]
+}

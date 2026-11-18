@@ -1,0 +1,44 @@
+{
+  "_comment": "Ground truth: which script really writes each output. [] = orphan (no script). 'stale' outputs get a date before their script's last change (see examples/set_dates.py).",
+  "outputs": {
+    "results/clean.parquet": [
+      "scripts/01_prepare.py"
+    ],
+    "results/model.joblib": [
+      "scripts/02_train.py"
+    ],
+    "results/scores.npy": [
+      "scripts/02_train.py"
+    ],
+    "results/metrics.json": [
+      "scripts/02_train.py"
+    ],
+    "figures/roc.png": [
+      "scripts/03_plots.py"
+    ],
+    "figures/hist_age.svg": [
+      "scripts/03_plots.py"
+    ],
+    "figures/hist_bmi.svg": [
+      "scripts/03_plots.py"
+    ],
+    "figures/hist_ldl.svg": [
+      "scripts/03_plots.py"
+    ],
+    "figures/umap.pdf": [
+      "scripts/03_plots.py"
+    ],
+    "figures/overview.png": [
+      "notebooks/explore.ipynb"
+    ],
+    "notebooks/explore.html": [
+      "notebooks/explore.ipynb"
+    ],
+    "figures/old_draft.png": [],
+    "data/raw/measurements.csv": [],
+    "data/raw/config.json": []
+  },
+  "stale": [
+    "figures/umap.pdf"
+  ]
+}
