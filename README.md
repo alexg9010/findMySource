@@ -25,42 +25,25 @@ code. It reads what is already there.
 ## Install
 
 `fms` is a single pure-Python package with **no dependencies** (Python ≥ 3.8).
-Use whichever environment manager you already work with.
 
-**pip / pipx**
+**pip**
 ```bash
-pipx install git+https://github.com/<org>/findMySource   # isolated CLI (recommended)
-pip install git+https://github.com/<org>/findMySource    # into the active environment
-```
-
-**pixi**
-```bash
-pixi init && pixi add python   # skip `pixi init` in an existing workspace
-pixi add --pypi "findmysource @ git+https://github.com/<org>/findMySource"
-pixi run fms
-```
-
-**conda / mamba**
-```bash
-conda create -n fms python pip && conda activate fms
 pip install git+https://github.com/<org>/findMySource
 ```
 
-**Guix** (not packaged yet; use a temporary Python shell)
+**uv**
 ```bash
-guix shell python python-pip -- sh -c \
-  'pip install --user git+https://github.com/<org>/findMySource && ~/.local/bin/fms'
-```
-Or run it without installing anything, from a clone:
-```bash
-guix shell python -- python -m findmysource      # inside the cloned repo
+uv tool install git+https://github.com/<org>/findMySource   # puts `fms` on your PATH
+uvx --from git+https://github.com/<org>/findMySource fms    # one-off run, nothing installed
 ```
 
-**From a clone, no install at all**
+**From source**
 ```bash
 git clone https://github.com/<org>/findMySource
-PYTHONPATH=findMySource python3 -m findmysource
+cd findMySource
+pip install -e .          # or: uv tool install -e .
 ```
+An editable install (`-e`) picks up changes to the code without reinstalling.
 
 ## Use
 
@@ -80,7 +63,8 @@ Then open `fms-report/index.html`. Add `fms-report/` to your `.gitignore`.
   "scripts": ["scripts", "analysis", "notebooks"],
   "outputs": ["results", "figures", "data"],
   "aliases": { "/local": "/data/local" },
-  "exclude": [".git", "*.RData", "*_cache"],
+  "exclude": ["*.RData", "*_cache"],
+  "hidden": false,
   "extensions": [".r", ".rmd", ".qmd", ".ipynb"]
 }
 ```
@@ -90,7 +74,8 @@ Then open `fms-report/index.html`. Add `fms-report/` to your `.gitignore`.
 | `scripts` | folders (or single files) to search for scripts | `["."]` |
 | `outputs` | folders to search for output files; symlinks listed here are followed | `["."]` |
 | `aliases` | path prefixes that mean the same place, e.g. a mount visible as both `/local` and `/data/local`. Symlinks are resolved automatically and need no alias. | `{}` |
-| `exclude` | file and folder name globs to skip | VCS, RStudio and cache folders |
+| `exclude` | file and folder name globs to skip | RStudio, cache and editor files |
+| `hidden` | also scan hidden folders (`.git`, `.snakemake`, …). A hidden folder listed in `scripts`/`outputs` is always scanned. | `false` |
 | `extensions` | script types to parse | R, Rmd, qmd, ipynb |
 
 ## How it works
