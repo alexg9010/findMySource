@@ -1,0 +1,49 @@
+name: Community
+
+# Rule-based housekeeping, no secrets needed. Nothing here checks out or runs PR code,
+# so pull_request_target (which can label and comment on fork PRs) is safe.
+on:
+  issues:
+    types: [opened]
+  pull_request_target:
+    types: [opened, synchronize, reopened]
+  schedule:
+    - cron: "17 3 * * *"
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+
+jobs:
+  welcome:
+    if: github.event.action == 'opened'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/first-interaction@v3
+        with:
+          issue_message: |
+            Thanks for opening your first issue here! If it is about a wrong or missing match,
+            the row from `fms-report/manifest.tsv` and the line of code that writes the file help a lot.
+          pr_message: |
+            Thanks for your first pull request! CI runs the tests on Python 3.8 to 3.14.
+            Run `pytest` locally before pushing, and see `CLAUDE.md` for the project rules.
+
+  label:
+    if: github.event_name == 'pull_request_target'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/labeler@v7
+
+  stale:
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/stale@v11
+        with:
+          days-before-stale: 60
+          days-before-close: 14
+          exempt-issue-labels: bug,pinned
+          exempt-pr-labels: pinned
+          stale-issue-message: No activity for 60 days. This will be closed in 14 days unless there is a new comment.
+          stale-pr-message: No activity for 60 days. This will be closed in 14 days unless there is a new comment.

@@ -1,0 +1,38 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_call:  # reused by release.yml
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest]
+        python: ["3.8", "3.9", "3.10", "3.11", "3.12", "3.13", "3.14"]
+        include:
+          - { os: macos-latest, python: "3.14" }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10
+      - run: uv run --no-project --python ${{ matrix.python }} --with pytest pytest -q
+
+  report:  # the HTML report in a real browser: every tab, click-to-trace, no console errors
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10
+      - run: uvx playwright@1.64.1 install --with-deps chromium
+      - run: uv run tests/visual.py
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: screenshots
+          path: tests/screenshots/

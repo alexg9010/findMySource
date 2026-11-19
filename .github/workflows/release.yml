@@ -1,0 +1,30 @@
+name: Release
+
+# Push a tag vX.Y.Z whose version matches findmysource/__init__.py -> tests, build, GitHub Release.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  ci:
+    uses: ./.github/workflows/ci.yml
+
+  release:
+    needs: ci
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10
+      - name: Tag matches package version
+        run: |
+          v=$(python3 -c "import findmysource; print(findmysource.__version__)")
+          [ "v$v" = "$GITHUB_REF_NAME" ] || { echo "::error::tag $GITHUB_REF_NAME but __version__ is $v"; exit 1; }
+      - run: uv build
+      - run: gh release create "$GITHUB_REF_NAME" dist/* --generate-notes --verify-tag
+        env:
+          GH_TOKEN: ${{ github.token }}
