@@ -13,6 +13,7 @@ Without a report path, fms is run on examples/r-project first.
 Exits 1 if any tab logged an error, a request failed or a check failed.
 """
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -20,14 +21,20 @@ import tempfile
 from playwright.sync_api import sync_playwright
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.join(REPO, "examples"))
+import set_dates  # noqa: E402
 
 
 def main():
     report = sys.argv[1] if len(sys.argv) > 1 else None
     if not report:
+        # a copy with realistic dates: a fresh checkout dates every file alike, so nothing would be stale
         out = tempfile.mkdtemp(prefix="fms-visual-")
+        proj = os.path.join(out, "r-project")
+        shutil.copytree(os.path.join(REPO, "examples", "r-project"), proj)
+        set_dates.main(proj)
         subprocess.run([sys.executable, "-m", "findmysource", "--out", out], check=True,
-                       cwd=os.path.join(REPO, "examples", "r-project"), env={**os.environ, "PYTHONPATH": REPO})
+                       cwd=proj, env={**os.environ, "PYTHONPATH": REPO})
         report = os.path.join(out, "index.html")
     shots = os.path.abspath(sys.argv[2] if len(sys.argv) > 2 else os.path.join(REPO, "tests", "screenshots"))
     os.makedirs(shots, exist_ok=True)
