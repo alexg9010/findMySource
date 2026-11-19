@@ -1,0 +1,25 @@
+# CodeRabbit reviews every PR (free for public repos; install the app: https://github.com/apps/coderabbitai).
+language: en-US
+reviews:
+  profile: chill
+  high_level_summary: true
+  poem: false
+  review_status: false
+  auto_review:
+    drafts: false
+  path_instructions:
+    - path: "findmysource/cli.py"
+      instructions: |
+        Engine of a static-analysis tool that links output files to the scripts that write them.
+        Flag changes that could link an output to the wrong script or drop a correct link, for R,
+        Python and shell code the tests do not cover. Standard library only, must run on Python 3.8.
+        The dense one-liner style is intentional; do not suggest reformatting.
+    - path: "findmysource/view.html"
+      instructions: |
+        Self-contained report page. It must work offline: flag any CDN or network request.
+        STALE_MS must equal STALE_SECONDS in cli.py.
+    - path: "tests/**"
+      instructions: Flag tests or examples/*/expected.json that were weakened to make a change pass.
+knowledge_base:
+  code_guidelines:
+    filePatterns: ["CLAUDE.md"]
