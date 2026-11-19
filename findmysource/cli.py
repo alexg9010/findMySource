@@ -166,7 +166,7 @@ def direction(fn, args):
     return "mention"
 
 def generic_scan(code, v0=None, stmts=None, vars_only=False):
-    """-> dict(ev=[(pattern, write|read|mention)], names={literal}, uses={script name}, vars={}, stmts=[]).
+    """-> dict(ev=[(pattern, write|read|mention, statement)], names={literal}, uses={script name}, vars={}, stmts=[]).
     vars_only: only follow assignments and script references (cheap first pass)."""
     v = dict(v0 or {})
     ev, names, uses = [], set(), set()
@@ -187,7 +187,7 @@ def generic_scan(code, v0=None, stmts=None, vars_only=False):
                     a = NAMED.sub("", a, count=1)
                     p = evaluate(a, v)
                     if FILE_LIKE.search(p) and len(p.replace("*", "")) >= 3 and "://" not in p:
-                        ev.append((p, kind))
+                        ev.append((p, kind, st[:160]))
                     lit = re.fullmatch(r"""\s*["']([\w.\-]{4,})["']\s*""", a)
                     if lit and kind == "write" and not FILE_LIKE.search(lit.group(1)):
                         names.add(lit.group(1))  # save_table(df, "de_table") -> de_table.*
@@ -196,7 +196,7 @@ def generic_scan(code, v0=None, stmts=None, vars_only=False):
             val = evaluate(m.group(2), v)
             v[m.group(1)] = val
             if not vars_only and FILE_LIKE.search(val) and len(val.replace("*", "")) >= 3 and "://" not in val:
-                ev.append((val, "mention"))
+                ev.append((val, "mention", st[:160]))
     return {"ev": sorted(set(ev)), "names": names, "uses": uses, "vars": v, "stmts": stmts}
 
 
@@ -456,25 +456,28 @@ def main():
 
     # 3. link: every piece of evidence gets a RANK; an output's sources are the scripts with the best rank
     src_of = defaultdict(dict)  # output -> {script: label}
-    def add(f, s, label):
+    why = {}  # (output, script) -> code line of the best evidence
+    def add(f, s, label, code=""):
         if f in info or f == s: return
-        if RANK[label] < RANK.get(src_of[f].get(s), 99): src_of[f][s] = label
+        if RANK[label] < RANK.get(src_of[f].get(s), 99): src_of[f][s] = label; why[f, s] = code
     edges, reads_of = set(), defaultdict(set)
     by_stem = defaultdict(list)
     for f in stat: by_stem[os.path.basename(f).split(".")[0]].append(f)
     for s, d in info.items():
-        for p, kind in d["ev"]:
+        for p, kind, code in d["ev"]:
             hit, conf = match(p, s)
             if kind == "read":
                 for f in hit: reads_of[s].add(f); edges.add((f, s, "reads"))
                 if not hit and "*" not in p: edges.add((resolve(p, s)[0], s, "reads"))  # input outside the scan
                 continue
-            for f in hit: add(f, s, kind + ("-glob" if conf == "glob" else ""))
+            for f in hit: add(f, s, kind + ("-glob" if conf == "glob" else ""), code)
         for n in d["names"]:
-            for f in by_stem.get(n, []): add(f, s, "name")
+            for f in by_stem.get(n, []): add(f, s, "name", f'"{n}"')
         for p in d["lang"]["writes"]:  # R-specific fallback: only wins where the generic evidence is weaker
             hit, conf = match(p, s)
-            for f in hit: add(f, s, "lang-write" if conf == "exact" else "lang-glob")
+            key = max(os.path.basename(p).split("*"), key=len)  # find the code line by the pattern's literal part
+            code = next((st[:160] for st in d["stmts"] if key and key in st), "")
+            for f in hit: add(f, s, "lang-write" if conf == "exact" else "lang-glob", code)
         for p in d["lang"]["reads"]:
             for f in match(p, s)[0]: reads_of[s].add(f); edges.add((f, s, "reads"))
         for u in d["used"]: edges.add((u, s, "source"))
@@ -495,7 +498,7 @@ def main():
     os.makedirs(a.out, exist_ok=True)
     rows, outputs, stale = [], sorted(set(stat) - set(info)), {}
     with open(os.path.join(a.out, "manifest.tsv"), "w") as m:
-        m.write("output\tsources\tevidence\toutput_created\toutput_modified\tsource_modified\tstale_days\tinputs\n")
+        m.write("output\tsources\tevidence\toutput_created\toutput_modified\tsource_modified\tstale_days\tinputs\tevidence_code\n")
         for f in outputs:
             st, ss = stat[f], src_of.get(f, {})
             # best confidence first; ties -> script whose last change is closest before the output
@@ -506,9 +509,11 @@ def main():
                 rel(f), ";".join(rel(s) for s in order), ";".join(ss[s] for s in order) or "unmatched",
                 ts(created(st)), ts(st.st_mtime), ";".join(info[s]["modified"] for s in order),
                 str(stale.get(f, "")),
-                ";".join(sorted({rel(i) for s in order for i in reads_of[s]}))[:2000]]) + "\n")
+                ";".join(sorted({rel(i) for s in order for i in reads_of[s]}))[:2000],
+                " ;; ".join(" ".join(why.get((f, s), "").split()) for s in order)]) + "\n")
             if order: rows.append({"o": rel(f), "s": [rel(x) for x in order], "c": [ss[x] for x in order],
-                                   "m": ts(st.st_mtime), "sm": [info[x]["modified"] for x in order]})
+                                   "m": ts(st.st_mtime), "sm": [info[x]["modified"] for x in order],
+                                   "x": [why.get((f, x), "") for x in order]})
 
     # 5. graph: linked files only. When one script writes >15 files into one folder, a "group" node is added
     #    and those files get "grp": <group id>; the page can show either the group or the files (toggle).

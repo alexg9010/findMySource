@@ -31,11 +31,13 @@ fig.savefig(
     FIGURES / "roc.png", dpi=150)
 png(file.path(FIGURES, "plain_device.png"))
 ''', v)
-    assert ("results/metrics.json", "write") in g["ev"]   # open(..., "w")
-    assert ("figures/roc.png", "write") in g["ev"]        # multi-line call
-    assert ("data/raw/m.csv", "read") in g["ev"]
-    assert ("figures/plain_device.png", "mention") in g["ev"]  # no verb: R fallback upgrades it
-    assert not any("commented" in p for p, _ in g["ev"])
+    ev = {(p, k) for p, k, _ in g["ev"]}
+    assert ("results/metrics.json", "write") in ev   # open(..., "w")
+    assert ("figures/roc.png", "write") in ev        # multi-line call
+    assert ("data/raw/m.csv", "read") in ev
+    assert ("figures/plain_device.png", "mention") in ev  # no verb: R fallback upgrades it
+    assert not any("commented" in p for p, _ in ev)
+    assert ("figures/roc.png", "write", 'fig.savefig(\n    FIGURES / "roc.png", dpi=150)') in g["ev"]  # code line kept
     assert g["names"] == {"de_table"}                      # only from writing calls, not c(...)
     assert g["uses"] == {"config.py"}
 
