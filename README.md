@@ -17,6 +17,11 @@
 
 ---
 
+<p align="center">
+  <img src="docs/img/flow.png" alt="Flow tab of the report: clicking figures/qc/pca.png highlights its upstream chain from the raw data through 01_load.R, 02_model.Rmd and 03_figures.R; the details panel shows the ggsave() line that wrote it and warns that the script was edited 30 days after the figure, so it is possibly stale">
+  <br><sub>The report for <a href="examples/r-project">examples/r-project</a>: one click on a figure shows the script and line that made it, and that it is out of date.</sub>
+</p>
+
 Coming back to an analysis after months away, or preparing a figure for a paper,
 you often need to answer: *which script produced this file, from which inputs,
 and is it still up to date?* `findMySource` (`fms` on the command line) scans
@@ -41,6 +46,22 @@ your scripts and output folders, matches the two up, and writes:
   - **Unmatched**: a folder tree of the output files no script could be linked to,
     which shows what to add to `exclude` in `fms.json`.
 - `fms-report/graph.json`: the same graph, for your own tooling.
+
+<details>
+<summary><b>More screenshots</b>: Table and Timeline</summary>
+
+**Table**: every output with its script, the kind of evidence for the match, and its dates.
+The stale figure is flagged in red.
+
+<img src="docs/img/table.png" alt="Table tab: nine outputs with their source scripts, evidence labels such as write, name, stem-rule and lang-glob, output and script dates; figures/qc/pca.png is marked as written 30 days before its script's last change">
+
+**Timeline**: one row per script. Dots are its outputs, the black tick is the script's last change.
+A red dot left of the tick is an output written before the script was edited.
+
+<img src="docs/img/timeline.png" alt="Timeline tab: three scripts on a date axis; 01_load.R and 02_model.Rmd have green dots after their last change, 03_figures.R has one red dot a month earlier">
+
+<sub>Regenerate with <code>uv run docs/screenshots.py</code>.</sub>
+</details>
 
 `fms` needs no running pipeline, no workflow manager and no changes to your
 code. It reads what is already there.
