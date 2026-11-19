@@ -31,6 +31,19 @@ def test_cli():
     assert "results/model.rds" in out and "results/clean.rds" in out, out
 
 
+def test_rerun_uses_the_cache():
+    d = os.path.join(tempfile.mkdtemp(), "rp")
+    shutil.copytree(os.path.join(REPO, "examples", "r-project"), d)
+    run = lambda: subprocess.run([sys.executable, "-m", "findmysource"], cwd=d, capture_output=True, text=True,
+                                 env={**os.environ, "PYTHONPATH": REPO}).stderr
+    assert "(4 read, 0 from cache)" in run()
+    assert "no changes since the last scan" in run()             # nothing changed: report kept
+    with open(os.path.join(d, "scripts", "01_load.R"), "a") as fh: fh.write("\n# edit\n")
+    err = run()
+    assert "(1 read, 3 from cache)" in err and "outputs matched" in err, err  # only the edited script is re-read
+
+
 if __name__ == "__main__":
     test_cli()
+    test_rerun_uses_the_cache()
     print("ok")

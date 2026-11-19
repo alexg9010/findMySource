@@ -98,7 +98,8 @@ fms                        # scan: uses ./fms.json if present, else scans the cu
 fms --config fms.json --out fms-report
 ```
 
-This prints a short summary and writes the report. Open `fms-report/index.html`, and
+This prints a short summary and writes the report. A rerun reads only scripts that changed
+(`fms-report/cache.json`), and when nothing changed at all it keeps the report as it is. Open `fms-report/index.html`, and
 add `fms-report/` to your `.gitignore`.
 
 Afterwards, ask about single files or folders. These read the last scan, so they are instant,

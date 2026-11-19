@@ -23,7 +23,7 @@ paths from command-line args are unknown; only the Network tab needs internet (v
 Config keys (JSON, all optional): scripts, outputs, exclude, aliases, extensions, hidden.
   {"scripts": ["scripts"], "outputs": ["results", "figures"], "aliases": {"/local": "/data/local"}}
 """
-import argparse, bisect, csv, datetime, fnmatch, json, os, re, subprocess, sys
+import argparse, bisect, csv, datetime, fnmatch, hashlib, json, os, re, subprocess, sys, time
 from collections import Counter, defaultdict
 
 from . import __version__
@@ -346,7 +346,10 @@ class Index:
         tail = pat.rsplit("*", 1)[1]  # cheap literal-suffix filter before the regex
         return [f for f in cands if f.endswith(tail) and rx.fullmatch(f)], "glob"
 
-def ts(t): return datetime.datetime.fromtimestamp(t).astimezone().isoformat(timespec="seconds")  # local, with offset
+def ts(t):
+    """local time with its offset, e.g. 2026-11-19T12:05:00+01:00 (strftime: ~10x faster than datetime.astimezone)"""
+    s = time.strftime("%Y-%m-%dT%H:%M:%S%z", time.localtime(t))
+    return s[:-2] + ":" + s[-2:]
 def created(st): return getattr(st, "st_birthtime", st.st_mtime)
 
 def path_batches(paths, max_chars=32768):
@@ -414,8 +417,13 @@ STALE_SECONDS = 3600
 RANK = {"write": 0, "stem-rule": 1, "name": 2, "write-glob": 3, "lang-write": 4, "lang-glob": 5,
         "mention": 6, "mention-glob": 7}
 
+def took(t0):
+    s = time.monotonic() - t0
+    return f"{s:.1f} s" if s < 60 else f"{int(s // 60)} min {int(s % 60)} s"
+
 def scan(a):
     """Scan the project in the current folder; write manifest.tsv, graph.json, index.html; print a summary."""
+    t0 = time.monotonic()
     try: cfg = json.load(open(a.config)) if os.path.exists(a.config) else {}
     except ValueError as e: sys.exit(f"bad config {a.config}: {e}")
     tpl_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "view.html")
@@ -433,19 +441,38 @@ def scan(a):
     resolve = make_norm(aliases, root)
     rel = lambda p: os.path.relpath(p, root) if p.startswith(root + "/") else p
 
+    # cache in the report folder: the parse of every script (keyed by its mtime and size) and a fingerprint of the
+    # whole scan. Thrown away when fms itself changes.
+    cache_path = os.path.join(out, "cache.json")
+    tool = [__version__, os.path.getmtime(__file__), os.path.getmtime(tpl_path)]
+    try:
+        old = json.load(open(cache_path))
+        if old.get("tool") != tool: old = {}
+    except (OSError, ValueError): old = {}
+    cached, parsed = old.get("scripts", {}), {}
+    code_of = {}
+    def code(s):  # read lazily: unchanged scripts are not read at all
+        if s not in code_of: code_of[s] = read_code(s)
+        return code_of[s]
+
     # 1. scripts: generic engine twice (own variables first, then with variables of source()d/imported scripts)
     scripts = sorted({s for s in walk(cfg.get("scripts", ["."]), script_exclude, hidden, skip=[out])
                       if s.lower().endswith(exts)})
     commit, dirty = git_dates(root, scripts)
-    info, code_of = {}, {}
+    info = {}
     for s in scripts:
         try: st = os.stat(s)
         except OSError: continue
-        code_of[s] = read_code(s)
+        c = cached.get(s)
+        if not c or c["key"] != [st.st_mtime_ns, st.st_size]:
+            src, params = code(s)
+            g = generic_scan(src, params, vars_only=True)
+            c = {"key": [st.st_mtime_ns, st.st_size], "params": params, "uses": sorted(g["uses"]), "vars": g["vars"],
+                 "stmts": g["stmts"], "lang": parse_script(src, params)}
+        parsed[s] = c
         # git date unless the file has uncommitted changes (then its mtime is the real last change)
         changed = last_change(s, commit, dirty)
-        info[s] = {"modified": ts(changed), "mtime": changed,
-                   **generic_scan(*code_of[s], vars_only=True)}
+        info[s] = {"modified": ts(changed), "mtime": changed, **{k: c[k] for k in ("uses", "vars", "stmts", "lang")}}
     scripts = [s for s in scripts if s in info]
     by_name = defaultdict(list)
     for s in scripts: by_name[os.path.basename(s)].append(s)
@@ -455,11 +482,14 @@ def scan(a):
             cands = [x for x in by_name.get(u, []) if x != s]
             same = [x for x in cands if os.path.dirname(x) == os.path.dirname(s)]
             used += same or cands[:1]  # ponytail: one level deep; follow chains if configs source configs
-        code, params = code_of[s]
-        inherited = {k: val for u in used for k, val in info[u]["vars"].items()}
-        g = generic_scan(code, {**inherited, **params}, stmts=info[s]["stmts"])
-        info[s].update(g, used=used, lang=parse_script(code, params))
-    print(f"parsed {len(scripts)} scripts", file=sys.stderr)
+        c = parsed[s]
+        v0 = {**{k: val for u in used for k, val in info[u]["vars"].items()}, **c["params"]}
+        vh = hashlib.sha1(json.dumps(v0, sort_keys=True).encode()).hexdigest()
+        if c.get("vh") != vh:  # new script, or the variables it inherits changed
+            g = generic_scan(code(s)[0], v0, stmts=c["stmts"])
+            c.update(vh=vh, ev=[list(e) for e in g["ev"]], names=sorted(g["names"]))
+        info[s].update(ev=c["ev"], names=c["names"], used=used)
+    print(f"parsed {len(scripts)} scripts ({len(code_of)} read, {len(scripts) - len(code_of)} from cache) in {took(t0)}", file=sys.stderr)
 
     # 2. files (one stat each)
     stat = {}
@@ -474,6 +504,15 @@ def scan(a):
                 if os.path.exists(stem + suf):
                     rep[stem + suf].add(s)
                     stat.setdefault(stem + suf, os.stat(stem + suf))
+    # nothing changed since the last scan (scripts, their dates, every file and its timestamp, config)? then the
+    # report on disk is still right
+    fp = hashlib.sha1(json.dumps([tool, cfg, root, [(s, info[s]["modified"], parsed[s]["key"]) for s in scripts]]).encode())
+    for f in sorted(stat): fp.update(f"{f}\0{stat[f].st_mtime_ns}\0{stat[f].st_size}\n".encode())
+    fp = fp.hexdigest()
+    if fp == old.get("fingerprint") and os.path.exists(os.path.join(a.out, "index.html")):
+        print(f"no changes since the last scan ({old.get('generated', '?')}); report is up to date ({took(t0)})", file=sys.stderr)
+        print(old.get("summary", ""))
+        return
     idx = Index(set(stat) | set(scripts))
 
     def match(p, s):
@@ -598,14 +637,18 @@ def scan(a):
             "generated": datetime.datetime.now().astimezone().isoformat(timespec="minutes")}
     html = open(tpl_path).read().replace("__DATA__", json.dumps(data).replace("</", "<\\/"))
     open(os.path.join(a.out, "index.html"), "w").write(html)
-    print(f"{len(rows)}/{len(outputs)} outputs matched; {len(nodes)} nodes, {len(gedges)} edges -> {a.out}/",
-          file=sys.stderr)
-    print(f"\n{len(rows)} of {len(outputs)} outputs traced to a script, {len(stale)} possibly stale"
-          f" (fms <folder> lists them)")
+    print(f"{len(rows)}/{len(outputs)} outputs matched; {len(nodes)} nodes, {len(gedges)} edges -> {a.out}/"
+          f" in {took(t0)}", file=sys.stderr)
+    summary = (f"\n{len(rows)} of {len(outputs)} outputs traced to a script, {len(stale)} possibly stale"
+               f" (fms <folder> lists them)")
     top = Counter(s for r in rows for s in r["s"]).most_common(5)
-    if top: print("most outputs:\n" + "\n".join(f"  {n:6}  {s}" for s, n in top))
-    if unm: print("most unmatched (add to outputs/exclude in fms.json?):\n"
-                  + "\n".join(f"  {n:6}  {d}/" for d, n in unm.most_common(5)))
+    if top: summary += "\nmost outputs:\n" + "\n".join(f"  {n:6}  {s}" for s, n in top)
+    if unm: summary += ("\nmost unmatched (add to outputs/exclude in fms.json?):\n"
+                        + "\n".join(f"  {n:6}  {d}/" for d, n in unm.most_common(5)))
+    print(summary)
+    with open(cache_path, "w") as fh:
+        json.dump({"tool": tool, "fingerprint": fp, "generated": data["generated"], "summary": summary,
+                   "scripts": parsed}, fh)
 
 
 def find_root(start, out):
