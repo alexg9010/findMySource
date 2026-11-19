@@ -1,5 +1,6 @@
 """Run with `pytest` or plain `python tests/test_core.py`."""
 import csv
+import datetime
 import os
 import subprocess
 import sys
@@ -7,8 +8,8 @@ import tempfile
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # run without installing
 
-from findmysource.cli import (Index, evaluate, generic_scan, git_dates, make_norm, parse_script, path_batches,
-                              read_code, statements, ts, walk)
+from findmysource.cli import (Index, evaluate, generic_scan, git_dates, last_change, make_norm, parse_script,
+                              path_batches, read_code, statements, ts, walk)
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -153,6 +154,24 @@ def test_git_dates_ignore_paths_outside_the_repository():
         assert list(dates) == [f"{t}/repo/a.R"]  # one outside path must not cost the others their dates
 
 
+def test_last_change_of_a_script():
+    with tempfile.TemporaryDirectory() as root:
+        root = os.path.realpath(root)
+        s = f"{root}/script.R"
+        write(s, "x <- 1\n")
+        git(root, "init", "-q"); git(root, "add", "script.R")
+        stamp = "2024-01-01T12:00:00+00:00"
+        git(root, "commit", "-qm", "add", env={"GIT_AUTHOR_DATE": stamp, "GIT_COMMITTER_DATE": stamp})
+        committed = datetime.datetime.fromisoformat(stamp).timestamp()
+        # fresh clone: file time = clone time, much later than the commit -> the commit date counts,
+        # otherwise every output of a freshly cloned project would look stale
+        assert last_change(s, *git_dates(root)) == committed
+        os.utime(s, (committed - 86400,) * 2)  # file older than its commit (committed later): file time counts
+        assert last_change(s, *git_dates(root)) == committed - 86400
+        write(s, "x <- 2\n")  # uncommitted edit: file time counts
+        assert last_change(s, *git_dates(root)) == os.stat(s).st_mtime
+
+
 def test_small_helpers():
     assert ts(0)[-6] in "+-"  # local time with its offset: unambiguous
     assert list(path_batches(["aaa", "bb", "cccc"], 5)) == [["aaa"], ["bb"], ["cccc"]]
@@ -165,5 +184,6 @@ if __name__ == "__main__":
     test_build_copies_of_scripts_are_skipped_but_outputs_there_are_kept()
     test_git_dates_keep_the_time_zone()
     test_git_dates_ignore_paths_outside_the_repository()
+    test_last_change_of_a_script()
     test_small_helpers()
     print("ok")
