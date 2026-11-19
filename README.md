@@ -47,18 +47,18 @@ code. It reads what is already there.
 
 **pip**
 ```bash
-pip install git+https://github.com/<org>/findMySource
+pip install git+https://github.com/alexg9010/findMySource
 ```
 
 **uv**
 ```bash
-uv tool install git+https://github.com/<org>/findMySource   # puts `fms` on your PATH
-uvx --from git+https://github.com/<org>/findMySource fms    # one-off run, nothing installed
+uv tool install git+https://github.com/alexg9010/findMySource   # puts `fms` on your PATH
+uvx --from git+https://github.com/alexg9010/findMySource fms    # one-off run, nothing installed
 ```
 
 **From source**
 ```bash
-git clone https://github.com/<org>/findMySource
+git clone https://github.com/alexg9010/findMySource
 cd findMySource
 pip install -e .          # or: uv tool install -e .
 ```
@@ -95,7 +95,7 @@ Then open `fms-report/index.html`. Add `fms-report/` to your `.gitignore`.
 | `aliases` | path prefixes that mean the same place, e.g. a mount visible as both `/local` and `/data/local`. Symlinks are resolved automatically and need no alias. | `{}` |
 | `exclude` | file and folder name globs to skip | RStudio, cache and editor files |
 | `hidden` | also scan hidden folders (`.git`, `.snakemake`, …). A hidden folder listed in `scripts`/`outputs` is always scanned. | `false` |
-| `extensions` | script types to parse | R, Rmd, qmd, ipynb |
+| `extensions` | script types to parse | all types listed under [How it works](#how-it-works) |
 
 ## How it works
 
@@ -133,7 +133,7 @@ Then open `fms-report/index.html`. Add `fms-report/` to your `.gitignore`.
 5. **Date.**
    - An output's date is its file modification time.
    - A script's date is its last git commit, or its file time if it has uncommitted changes.
-     The timeline flags outputs that are older than their script.
+     An output is flagged as possibly stale when its script changed more than an hour after it.
 
 Scripts are recognised by extension. The default list covers R, R Markdown, Quarto, Python,
 Jupyter, shell, Snakemake, Julia, Nextflow, Perl and MATLAB, plus files named `Snakefile`
