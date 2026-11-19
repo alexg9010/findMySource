@@ -303,13 +303,14 @@ def make_norm(aliases, root):
         return (os.path.realpath(d) if d else "") + p[len(d):] if p.startswith("/") else p
     name = "/" + os.path.basename(root) + "/"
     def moved(p):  # another clone of this project (a colleague's home, an old server path): map it here
-        i = p.find(name)
-        if i < 0 or p.startswith(root + "/"): return p
-        d = p.split("*", 1)[0].rpartition("/")[0]
-        return p if os.path.exists(d) else root + p[i + len(name) - 1:]
+        if p.startswith(root + "/") or os.path.exists(p.split("*", 1)[0].rpartition("/")[0]): return [p]
+        cands, i = [], p.find(name)
+        while i >= 0:  # /c/proj/proj/out/x.pdf: either /proj/ may be the project; the matcher tries each in turn
+            cands.append(root + p[i + len(name) - 1:]); i = p.find(name, i + 1)
+        return cands or [p]
     def resolve(p, script):
         p0 = os.path.expanduser(p); p = alias(p0)
-        if p == p0 and p.startswith("/"): p = moved(p)  # a configured alias wins
+        if p == p0 and p.startswith("/"): return [real(c) for c in moved(p)]  # a configured alias wins
         if p.startswith(("/", "*")): return [real(p)]
         rel = re.sub(r"^(\./)+", "", p)
         cands = [real(alias(os.path.normpath(os.path.join(b, rel)))) for b in (os.path.dirname(script), root)]
@@ -538,9 +539,9 @@ def scan(a):
     nb = defaultdict(set)  # a.Rmd and a.qmd may share a_files/
     for s in scripts:
         if s.lower().endswith((".rmd", ".qmd", ".ipynb")): nb[os.path.splitext(s)[0]].add(s)
-    for f in stat:  # chunk figures that knitr/Quarto put in <stem>_files/ (an ancestor may also end in _files)
-        i = f.find("_files/")
-        while i > 0 and f[:i] not in nb: i = f.find("_files/", i + 1)
+    for f in stat:  # chunk figures that knitr/Quarto put in <stem>_files/: the deepest notebook stem wins
+        i = f.rfind("_files/")
+        while i > 0 and f[:i] not in nb: i = f.rfind("_files/", 0, i)
         if i > 0: rep[f] |= nb[f[:i]]
     # nothing changed since the last scan (scripts, their dates, every file and its timestamp, config)? then the
     # report on disk is still right

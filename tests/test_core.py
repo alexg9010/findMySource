@@ -154,6 +154,22 @@ def test_paths_into_another_clone_and_chunk_figures():
         assert chunk["evidence"] == "stem-rule;stem-rule" and sorted(chunk["sources"].split(";")) == ["nb/a.Rmd", "nb/a.qmd"]
 
 
+def test_repeated_project_names_and_nested_notebooks():
+    with tempfile.TemporaryDirectory() as t:
+        root = os.path.join(os.path.realpath(t), "proj")
+        write(f"{root}/out/x.pdf")
+        write(f"{root}/out/proj/y.pdf")  # an output folder named like the project
+        write(f"{root}/nb/a_files/b_files/fig.png")
+        write(f"{root}/nb/a.Rmd")
+        write(f"{root}/nb/a_files/b.Rmd")  # a notebook inside another notebook's _files/
+        write(f"{root}/s.R", 'saveRDS(x, "/home/c/proj/proj/out/x.pdf")\n'  # cloned into a folder of the same name
+                             'saveRDS(x, "/home/c/proj/out/proj/y.pdf")\n')
+        rows = run_fms(root)
+        assert rows["out/x.pdf"]["evidence"] == "write"
+        assert rows["out/proj/y.pdf"]["evidence"] == "write"
+        assert rows["nb/a_files/b_files/fig.png"]["sources"] == "nb/a_files/b.Rmd"
+
+
 def test_git_dates_keep_the_time_zone():
     with tempfile.TemporaryDirectory() as root:
         root = os.path.realpath(root)  # git reports resolved paths (/tmp is a symlink on macOS)
@@ -202,6 +218,7 @@ if __name__ == "__main__":
     test_report_is_not_scanned_on_a_repeat_run()
     test_build_copies_of_scripts_are_skipped_but_outputs_there_are_kept()
     test_paths_into_another_clone_and_chunk_figures()
+    test_repeated_project_names_and_nested_notebooks()
     test_git_dates_keep_the_time_zone()
     test_git_dates_ignore_paths_outside_the_repository()
     test_last_change_of_a_script()
