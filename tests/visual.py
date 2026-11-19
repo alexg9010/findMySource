@@ -112,6 +112,18 @@ def main():
         snap(page, "steps-expanded")
         page.close()
 
+        page = open_tab("unmatched")  # folder tree: opening a folder draws its sub-folders
+        rows = page.locator("#utree summary")
+        n0 = rows.count()
+        if n0 and page.locator("#utree summary:not(.leaf)").count():
+            page.click("#utree summary:not(.leaf) >> nth=0")
+            page.wait_for_timeout(300)  # the toggle event that draws sub-folders is asynchronous
+        print(f"unmatched: {n0} top folders, {rows.count()} after opening the first")
+        if not n0 and "every output" not in page.inner_text("#utree"):
+            problems.append("unmatched: no folders drawn")
+        snap(page, "unmatched")
+        page.close()
+
         page = open_tab("flow", dark=True)
         snap(page, "flow-dark")
         page.close()

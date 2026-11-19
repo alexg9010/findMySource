@@ -59,6 +59,15 @@
   #det .x{float:right;border:0;background:none;color:var(--mute);cursor:pointer;font-size:18px;line-height:1}
   .warn{color:var(--stale)}[data-o]{cursor:pointer}
   @media (max-width:900px){.fwrap{flex-wrap:wrap}#det{width:100%}}
+  #utree{padding:8px 4px}#utree details{margin-left:18px}#utree>details{margin-left:0}
+  #utree summary{display:flex;gap:10px;align-items:center;padding:3px 6px;border-radius:5px;cursor:pointer;list-style:none}
+  #utree summary::before{content:'▸';color:var(--mute);width:10px}#utree details[open]>summary::before{content:'▾'}
+  #utree summary.leaf::before{content:''}#utree summary:hover{background:color-mix(in srgb,var(--acc) 7%,transparent)}
+  #utree .nm{font-family:ui-monospace,Menlo,monospace;font-size:12px;word-break:break-all;flex:1}
+  #utree .n{color:var(--mute);font-variant-numeric:tabular-nums;min-width:70px;text-align:right}
+  #utree .bar{width:120px;height:6px;border-radius:3px;background:var(--line);flex:none;overflow:hidden}
+  #utree .bar i{display:block;height:100%;background:var(--group)}
+  .stat[data-go]{cursor:pointer}.stat[data-go]:hover{border-color:var(--acc)}
 </style>
 
 <header>
@@ -67,7 +76,7 @@
 </header>
 <nav>
   <button data-v="flow">Flow</button><button data-v="timeline">Timeline</button><button data-v="matrix">Matrix</button>
-  <button data-v="table">Table</button><button data-v="network">Steps</button>
+  <button data-v="table">Table</button><button data-v="network">Steps</button><button data-v="unmatched">Unmatched</button>
 </nav>
 
 <section id="flow" class="view">
@@ -118,6 +127,12 @@
     <label><input type="checkbox" id="ninp"> show external inputs</label></div>
   <div class="card" id="ncard"><svg id="nsvg"></svg></div>
 </section>
+<section id="unmatched" class="view">
+  <div class="tools"><span>Files in the scanned output folders that no script could be linked to, by folder.
+    Raw data and tool output (alignments, downloads) usually belong in <b>exclude</b> in fms.json;
+    results you made yourself point to a script that fms cannot read yet, or to one outside <b>scripts</b>.</span></div>
+  <div class="card"><div id="utree"></div></div>
+</section>
 <div id="tip"></div>
 
 <script>
@@ -149,9 +164,15 @@ function openPath(p) { const id = NODE[p]; if (id !== undefined) { show('flow');
 $('sub').textContent = D.root + ' · generated ' + D.generated;
 const scriptsUsed = new Set(D.rows.flatMap(r => r.s)).size;
 $('stats').innerHTML = [[D.scripts.length, 'scripts parsed'], [scriptsUsed, 'scripts with outputs'],
-  [D.rows.length, 'matched outputs'], [D.rows.filter(staleBy).length, 'possibly stale'],
-  [D.unmatched, 'unmatched (see manifest.tsv)']]
-  .map(([n, l]) => `<div class="stat"><b>${n.toLocaleString()}</b><span>${l}</span></div>`).join('');
+  [D.rows.length, 'matched outputs', 'table'], [D.rows.filter(staleBy).length, 'possibly stale', 'stale'],
+  [D.unmatched, 'unmatched', 'unmatched']]
+  .map(([n, l, go]) => `<div class="stat"${go ? ` data-go="${go}"` : ''}><b>${n.toLocaleString()}</b><span>${l}</span></div>`).join('');
+$('stats').onclick = ev => {
+  const g = ev.target.closest('[data-go]');
+  if (!g) return;
+  show(g.dataset.go === 'stale' ? 'table' : g.dataset.go);
+  if (g.dataset.go === 'stale' || g.dataset.go === 'table') { $('sf').value = g.dataset.go === 'stale' ? 'stale' : ''; $('sf').onchange(); }
+};
 
 /* one tooltip for every view: any element with data-tip */
 const tip = $('tip');
@@ -165,7 +186,7 @@ document.addEventListener('mousemove', e => {
 });
 
 /* tabs */
-const built = {}, render = {flow, timeline, matrix, table, network};
+const built = {}, render = {flow, timeline, matrix, table, network, unmatched};
 function show(v) {
   if (!render[v]) v = 'flow';
   document.querySelectorAll('.view').forEach(e => e.classList.toggle('on', e.id === v));
@@ -526,6 +547,45 @@ function network() {
   $('ncol').onclick = () => { expanded.clear(); draw(); };
   $('ninp').onchange = draw;
   draw();
+}
+
+/* ---------- unmatched: folder tree of outputs without a script (counts only), children drawn on open ---------- */
+function unmatched() {
+  const root = {name: '', n: 0, own: 0, kids: {}};
+  for (const [d, c] of Object.entries(D.unm || {})) {
+    const parts = d === '.' ? [] : d.startsWith('/') ? ['/', ...d.slice(1).split('/')] : d.split('/');
+    let t = root; t.n += c;
+    for (const p of parts) { t = t.kids[p] = t.kids[p] || {name: p, n: 0, own: 0, kids: {}}; t.n += c; }
+    t.own += c;
+  }
+  if (!root.n) { $('utree').innerHTML = '<div class="empty">every output was traced to a script</div>'; return; }
+  const total = root.n, J = (a, b) => a === '' ? b : a === '/' ? '/' + b : a + '/' + b;
+  // one row per folder; chains of single sub-folders without own files are merged into one row
+  function node(t, path) {
+    let name = t.name;
+    while (!t.own && Object.keys(t.kids).length === 1) { t = Object.values(t.kids)[0]; name = J(name, t.name); path = J(path, t.name); }
+    return {t, name, path};
+  }
+  function row({t, name, path}) {
+    const kids = Object.values(t.kids), leaf = !kids.length, shown = path || '.';
+    const tip = `${shown}\n${t.n.toLocaleString()} unmatched file(s)` + (t.own && kids.length ? `, ${t.own.toLocaleString()} directly in it` : '') +
+                (shown === '/' ? '' : `\nto skip it: add "${shown}" to "exclude" in fms.json`);
+    return `<details data-p="${esc(path)}"><summary class="${leaf ? 'leaf' : ''}" data-tip="${esc(tip)}"><span class="nm">${esc(name)}${leaf || name.endsWith('/') ? '' : '/'}</span>` +
+           `<span class="bar"><i style="width:${(100 * t.n / total).toFixed(1)}%"></i></span><span class="n">${t.n.toLocaleString()}</span></summary></details>`;
+  }
+  const byPath = {};
+  function list(t, path) {
+    return Object.values(t.kids).sort((a, b) => b.n - a.n).map(k => {
+      const r = node(k, J(path, k.name)); byPath[r.path] = r.t; return row(r);
+    }).join('') + (t.own && Object.keys(t.kids).length ? `<div class="p mute" style="margin:2px 0 4px 36px">${t.own.toLocaleString()} files directly here</div>` : '');
+  }
+  const top = node(root, '');
+  byPath[top.path] = top.t;
+  $('utree').innerHTML = list(top.t, top.path);
+  $('utree').addEventListener('toggle', ev => {
+    const d = ev.target;
+    if (d.open && !d.dataset.done) { d.dataset.done = 1; d.insertAdjacentHTML('beforeend', list(byPath[d.dataset.p], d.dataset.p)); }
+  }, true);
 }
 
 show(location.hash.slice(1) || 'flow');
