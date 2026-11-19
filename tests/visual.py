@@ -43,6 +43,8 @@ def main():
             page.on("console", lambda m: m.type == "error" and problems.append(f"{label}: console: {m.text}"))
             page.on("pageerror", lambda e: problems.append(f"{label}: page error: {e}"))
             page.on("requestfailed", lambda r: problems.append(f"{label}: request failed: {r.url} ({r.failure})"))
+            # the report must work offline: any request that leaves the file system fails (and is reported above)
+            page.route("**/*", lambda r: r.continue_() if r.request.url.startswith("file:") else r.abort())
             page.goto(f"{url}#{tab}", wait_until="load")
             return page
 
@@ -96,26 +98,18 @@ def main():
                 snap(page, "table-to-flow")
             page.close()
 
-        # network: vis-network comes from a CDN; wait for its canvas or the offline message
         page = open_tab("network")
-        try:
-            page.wait_for_selector("#netbox canvas, #netbox .empty", timeout=20000)
-            state = "canvas" if page.locator("#netbox canvas").count() else "offline message"
-        except Exception:
-            state = "nothing after 20 s"
-        print(f"steps: {state}")
-        if state != "canvas":
-            problems.append(f"steps: {state}")
-        else:
-            collapsed = page.evaluate("network.nodes.length")
-            snap(page, "steps")
-            page.click("#nexp")
-            page.wait_for_timeout(500)
-            expanded = page.evaluate("network.nodes.length")
-            print(f"steps: {collapsed} boxes collapsed, {expanded} expanded")
-            if expanded <= collapsed:
-                problems.append("steps: 'expand all' did not add boxes")
-            snap(page, "steps-expanded")
+        boxes = page.locator("#nsvg .nd")
+        collapsed = boxes.count()
+        snap(page, "steps")
+        page.click("#nexp")
+        expanded = boxes.count()
+        print(f"steps: {collapsed} boxes collapsed, {expanded} expanded")
+        if not collapsed:
+            problems.append("steps: no boxes drawn")
+        elif expanded <= collapsed:
+            problems.append("steps: 'expand all' did not add boxes")
+        snap(page, "steps-expanded")
         page.close()
 
         page = open_tab("flow", dark=True)

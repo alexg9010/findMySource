@@ -45,7 +45,6 @@
   .chip.weak{color:var(--mute)}
   #tip{position:fixed;pointer-events:none;z-index:50;max-width:520px;background:#111c;color:#fff;padding:7px 10px;border-radius:6px;
        font:12px/1.45 ui-monospace,Menlo,monospace;white-space:pre-wrap;word-break:break-all;display:none;backdrop-filter:blur(4px)}
-  #netbox{height:calc(100vh - 230px)}
   .empty{padding:40px;text-align:center;color:var(--mute)}
   .fwrap{display:flex;gap:12px;align-items:flex-start}.fwrap .card{flex:1;min-width:0}
   #det{width:360px;flex:none;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px 14px;
@@ -116,9 +115,8 @@
     <span>One box per pipeline step (script folder). Arrow width = files one step reads from another.
       Click a step to expand it into its scripts; click a script to open it in Flow.</span>
     <button id="nexp">expand all</button><button id="ncol">collapse all</button>
-    <label><input type="checkbox" id="ninp"> show external inputs</label>
-    <span class="mute">(needs internet for the vis-network library)</span></div>
-  <div class="card" id="netbox"></div>
+    <label><input type="checkbox" id="ninp"> show external inputs</label></div>
+  <div class="card" id="ncard"><svg id="nsvg"></svg></div>
 </section>
 <div id="tip"></div>
 
@@ -200,6 +198,33 @@ function layers(ids, edges) {
   return lay;
 }
 
+/* columns from layers(); inside a column, sort by the mean height of what feeds you (barycenter), then tie() */
+function place(items, E, {W, H, GX, GY, PAD}, tie) {
+  const lay = layers(items.map(n => n.id), E), cols = [], pos = {}, preds = {};
+  items.forEach(n => (cols[lay[n.id]] = cols[lay[n.id]] || []).push(n));
+  E.forEach(e => (preds[e.to] = preds[e.to] || []).push(e.from));
+  let maxRows = 0;
+  cols.forEach((col, c) => {
+    if (!col) return;
+    const bc = n => { const p = (preds[n.id] || []).filter(x => pos[x]).map(x => pos[x].y); return p.length ? p.reduce((a, b) => a + b) / p.length : 1e9; };
+    col.sort((a, b) => bc(a) - bc(b) || tie(a, b));
+    col.forEach((n, i) => pos[n.id] = {x: PAD + c * (W + GX), y: PAD + i * (H + GY)});
+    maxRows = Math.max(maxRows, col.length);
+  });
+  return {pos, Wn: PAD * 2 + cols.length * (W + GX) - GX, Hn: PAD * 2 + maxRows * (H + GY)};
+}
+/* fit the map into its card, but never shrink text below ~45% (then scroll instead); returns the scale */
+function sizeSvg(svg, card, Wn, Hn, fit) {
+  const s = Math.min(1, (card.clientWidth - 4) / Wn), scale = fit && s >= 0.45 ? s : 1;
+  svg.setAttribute('viewBox', `0 0 ${Wn} ${Hn}`);
+  svg.setAttribute('width', Wn * scale);
+  svg.setAttribute('height', Hn * scale);
+  return scale;
+}
+const curve = (a, b, W, H) => { const x1 = a.x + W, y1 = a.y + H / 2, x2 = b.x - 2, y2 = b.y + H / 2, m = (x1 + x2) / 2;
+  return `M${x1},${y1}C${m},${y1} ${m},${y2} ${x2},${y2}`; };
+const ARROW = () => `<defs><marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerUnits="userSpaceOnUse" markerWidth="9" markerHeight="9" orient="auto"><path d="M0,0L10,5L0,10z" fill="${css('--mute')}"/></marker></defs>`;
+
 /* folder groups: files with "grp" belong to a group node. collapse=true shows the group, false the files */
 function foldGraph(collapse) {
   if (!collapse) {
@@ -235,26 +260,12 @@ function flow() {
     }
     E = E.filter(e => keep.has(e.from) && keep.has(e.to));
     N = F.nodes.filter(n => keep.has(n.id));
-    const lay = layers(N.map(n => n.id), E);
-    const cols = [];
-    N.forEach(n => (cols[lay[n.id]] = cols[lay[n.id]] || []).push(n));
-    pos = {};
-    let maxRows = 0;
-    const preds = {};
-    E.forEach(e => (preds[e.to] = preds[e.to] || []).push(e.from));
-    cols.forEach((col, c) => {
-      if (!col) return;
-      // barycenter ordering: sit next to what feeds you
-      const bc = n => { const p = (preds[n.id] || []).filter(x => pos[x]).map(x => pos[x].y); return p.length ? p.reduce((a, b) => a + b) / p.length : 1e9; };
-      col.sort((a, b) => bc(a) - bc(b) || a.group.localeCompare(b.group) || a.label.localeCompare(b.label));
-      col.forEach((n, i) => pos[n.id] = {x: PAD + c * (W + GX), y: PAD + i * (H + GY)});
-      maxRows = Math.max(maxRows, col.length);
-    });
+    const P = place(N, E, {W, H, GX, GY, PAD}, (a, b) => a.group.localeCompare(b.group) || a.label.localeCompare(b.label));
+    pos = P.pos;
     let o = '<g id="edges">';
     E.forEach((e, i) => {
-      const a = pos[e.from], b = pos[e.to], x1 = a.x + W, y1 = a.y + H / 2, x2 = b.x - 2, y2 = b.y + H / 2, m = (x1 + x2) / 2;
       const dash = e.kind === 'reads' ? '5 4' : e.kind === 'source' ? '2 3' : '';
-      o += `<path class="ed" data-i="${i}" d="M${x1},${y1}C${m},${y1} ${m},${y2} ${x2},${y2}" stroke="${css(ECOL[e.kind])}" stroke-dasharray="${dash}" marker-end="url(#ar)"/>`;
+      o += `<path class="ed" data-i="${i}" d="${curve(pos[e.from], pos[e.to], W, H)}" stroke="${css(ECOL[e.kind])}" stroke-dasharray="${dash}" marker-end="url(#ar)"/>`;
     });
     o += '</g><g id="nodes">';
     N.forEach(n => {
@@ -265,14 +276,8 @@ function flow() {
            `<text x="${p.x + 12}" y="${p.y + 19}"${n.group === 'script' ? ' font-weight="600"' : ''}>${esc(n.label.length > 28 ? n.label.slice(0, 11) + '…' + n.label.slice(-16) : n.label)}</text></g>`;
     });
     o += '</g>';
-    const svg = $('fsvg'), Wn = PAD * 2 + cols.length * (W + GX) - GX, Hn = PAD * 2 + maxRows * (H + GY);
-    // fit the whole map into the card, but never shrink text below ~45% (then scroll instead)
-    const s = Math.min(1, ($('fcard').clientWidth - 4) / Wn);
-    scale = fit && s >= 0.45 ? s : 1;
-    svg.setAttribute('viewBox', `0 0 ${Wn} ${Hn}`);
-    svg.setAttribute('width', Wn * scale);
-    svg.setAttribute('height', Hn * scale);
-    svg.innerHTML = `<defs><marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,0L10,5L0,10z" fill="${css('--mute')}"/></marker></defs>` + o +
+    scale = sizeSvg($('fsvg'), $('fcard'), P.Wn, P.Hn, fit);
+    $('fsvg').innerHTML = ARROW() + o +
       (N.length ? '' : `<text x="20" y="30" class="mute">nothing linked in this step</text>`);
   }
 
@@ -460,85 +465,67 @@ function table() {
   draw();
 }
 
-/* ---------- steps overview (vis-network, loaded on demand; fixed left-to-right layout) ---------- */
+/* ---------- steps overview: one box per script folder; expand a step into its scripts ---------- */
 function network() {
-  const go = () => {
-    const GN = G.nodes, writer = WRITER;
-    const steps = [...new Set(GN.map(n => stepOf(n.id)))];
-    const expanded = new Set();
-    // a node's box: its step when collapsed; its script (files fold into their writer) when expanded
-    const unit = id => {
-      const st = stepOf(id);
-      if (!expanded.has(st)) return 'C:' + st;
-      if (GN[id].group === 'script') return 'S:' + id;
-      return writer[id] !== undefined ? 'S:' + writer[id] : 'C:' + st;
-    };
-    const nodes = new vis.DataSet(), edges = new vis.DataSet();
-    function build() {
-      const U = {}, W = {};
-      for (const n of GN) {
-        const u = unit(n.id), x = U[u] = U[u] || {scripts: 0, files: 0, stale: 0, step: stepOf(n.id)};
-        if (n.group === 'script') x.scripts++;
-        else if (n.group !== 'group') { x.files++; if (n.stale) x.stale++; }
-      }
-      const hide = u => !$('ninp').checked && u === 'C:(external inputs)';
-      for (const u of Object.keys(U)) if (hide(u)) delete U[u];
-      for (const e of G.edges) {
-        if (e.kind === 'writes') continue;
-        const a = unit(e.from), b = unit(e.to);
-        if (a !== b && !hide(a) && !hide(b)) W[a + '>' + b] = (W[a + '>' + b] || 0) + 1;
-      }
-      const lay = layers(Object.keys(U), Object.keys(W).map(k => { const [from, to] = k.split('>'); return {from, to}; }));
-      const ink = css('--ink'), panel = css('--panel');
-      nodes.clear(); edges.clear();
-      nodes.add(Object.entries(U).map(([u, x]) => {
-        const isStep = u[0] === 'C', input = x.step === '(external inputs)';
-        const name = isStep ? (x.step === '.' ? '(project root)' : x.step) : GN[+u.slice(2)].label;
-        const nf = `${x.files} file${x.files === 1 ? '' : 's'}`;
-        const facts = (isStep && !input ? `${x.scripts} script${x.scripts === 1 ? '' : 's'} · ${nf}` : nf)
-                      + (x.stale ? ` · ⚠ ${x.stale} stale` : '');
-        const c = css(input ? '--input' : '--script');
-        return {id: u, level: lay[u], label: `${name}\n${facts}`, shape: 'box', margin: 10, borderWidth: isStep ? 2 : 1,
-          color: {background: isStep ? panel : c, border: c, highlight: {background: panel, border: ink}},
-          font: {color: isStep ? ink : '#fff', size: isStep ? 14 : 12, multi: false},
-          title: isStep ? (input ? 'files read but not written by any script' : 'click to expand') : 'click to open in Flow'};
-      }));
-      const mx = Math.max(1, ...Object.values(W));
-      edges.add(Object.entries(W).map(([k, n]) => {
-        const [a, b] = k.split('>');
-        return {from: a, to: b, arrows: 'to', width: 1 + 7 * Math.sqrt(n / mx), title: `${n} link(s)`,
-                color: {color: css('--read'), opacity: .6}, smooth: {type: 'cubicBezier', forceDirection: 'horizontal'}};
-      }));
-    }
-    build();
-    network.nodes = nodes;  // for tests
-    const net = new vis.Network($('netbox'), {nodes, edges}, {
-      layout: {hierarchical: {direction: 'LR', levelSeparation: 300, nodeSpacing: 80}},
-      physics: false, interaction: {hover: true}});
-    net.on('click', p => {
-      const u = p.nodes[0];
-      if (!u) return;
-      if (u[0] === 'C') {
-        const st = u.slice(2);
-        if (st === '(external inputs)') return;
-        expanded.has(st) ? expanded.delete(st) : expanded.add(st);
-      } else {  // a script: open its step in Flow and trace it
-        const id = +u.slice(2);
-        show('flow'); flow.open(scriptDir(GN[id]), id);
-        return;
-      }
-      build(); net.fit();
-    });
-    $('nexp').onclick = () => { steps.forEach(st => expanded.add(st)); build(); net.fit(); };
-    $('ncol').onclick = () => { expanded.clear(); build(); net.fit(); };
-    $('ninp').onchange = () => { build(); net.fit(); };
+  const GN = G.nodes, expanded = new Set(), steps = [...new Set(GN.map(n => stepOf(n.id)))];
+  // a node's box: its step when collapsed; its script (files fold into their writer) when expanded
+  const unit = id => {
+    const st = stepOf(id);
+    if (!expanded.has(st)) return 'C:' + st;
+    if (GN[id].group === 'script') return 'S:' + id;
+    return WRITER[id] !== undefined ? 'S:' + WRITER[id] : 'C:' + st;
   };
-  if (window.vis && window.vis.Network) return go();  // note: never name an element id="vis" (it shadows window.vis)
-  const s = document.createElement('script');
-  s.src = 'https://unpkg.com/vis-network@9.1.9/standalone/umd/vis-network.min.js';
-  s.onload = go;
-  s.onerror = () => $('netbox').innerHTML = '<div class="empty">vis-network could not be loaded (offline?). The other tabs work without internet.</div>';
-  document.head.appendChild(s);
+  const BW = 215, BH = 44;
+  function draw() {
+    const U = {}, W = {};
+    for (const n of GN) {
+      const u = unit(n.id), x = U[u] = U[u] || {id: u, scripts: 0, files: 0, stale: 0, step: stepOf(n.id)};
+      if (n.group === 'script') x.scripts++;
+      else if (n.group !== 'group') { x.files++; if (n.stale) x.stale++; }
+    }
+    const hide = u => !$('ninp').checked && u === 'C:(external inputs)';
+    for (const u of Object.keys(U)) if (hide(u)) delete U[u];
+    for (const e of G.edges) {
+      if (e.kind === 'writes') continue;
+      const a = unit(e.from), b = unit(e.to);
+      if (a !== b && !hide(a) && !hide(b)) W[a + '>' + b] = (W[a + '>' + b] || 0) + 1;
+    }
+    const items = Object.values(U), E = Object.entries(W).map(([k, n]) => { const [from, to] = k.split('>'); return {from, to, n}; });
+    const name = x => x.id[0] === 'C' ? (x.step === '.' ? '(project root)' : x.step) : GN[+x.id.slice(2)].label;
+    const {pos, Wn, Hn} = place(items, E, {W: BW, H: BH, GX: 60, GY: 12, PAD: 16}, (a, b) => name(a).localeCompare(name(b)));
+    const mx = Math.max(1, ...E.map(e => e.n));
+    let o = '';
+    E.forEach(e => o += `<path class="ed" d="${curve(pos[e.from], pos[e.to], BW, BH)}" stroke="${css('--read')}" style="stroke-width:${1 + 7 * Math.sqrt(e.n / mx)}" marker-end="url(#ar)" data-tip="${e.n} file link${e.n === 1 ? '' : 's'}"/>`);
+    items.forEach(x => {
+      const p = pos[x.id], isStep = x.id[0] === 'C', input = x.step === '(external inputs)', nm = name(x);
+      const nf = `${x.files} file${x.files === 1 ? '' : 's'}`;
+      const facts = (isStep && !input ? `${x.scripts} script${x.scripts === 1 ? '' : 's'} · ${nf}` : nf) + (x.stale ? ` · ⚠ ${x.stale} stale` : '');
+      const c = css(input ? '--input' : '--script');
+      const tip = isStep ? (input ? 'files read but not written by any script' : `${nm}\nclick to expand into its scripts`)
+                         : `${PATH(GN[+x.id.slice(2)])}\nclick to open in Flow`;
+      o += `<g class="nd" data-u="${esc(x.id)}" data-tip="${esc(tip)}"><rect class="b" x="${p.x}" y="${p.y}" width="${BW}" height="${BH}" rx="7"` +
+           (isStep ? ` style="stroke:${c};stroke-width:1.6"` : '') + `/><rect x="${p.x}" y="${p.y}" width="5" height="${BH}" rx="2" fill="${c}"/>` +
+           `<text x="${p.x + 13}" y="${p.y + 19}" font-weight="600" style="font-size:13px">${esc(nm.length > 30 ? '…' + nm.slice(-29) : nm)}</text>` +
+           `<text x="${p.x + 13}" y="${p.y + 35}"${x.stale ? ` style="fill:${css('--stale')}"` : ' class="mute"'}>${esc(facts)}</text></g>`;
+    });
+    sizeSvg($('nsvg'), $('ncard'), Wn, Hn, true);
+    $('nsvg').innerHTML = ARROW() + o + (items.length ? '' : '<text x="20" y="30" class="mute">no steps</text>');
+    network.count = items.length;  // for tests
+  }
+  $('nsvg').onclick = ev => {
+    const g = ev.target.closest('.nd');
+    if (!g) return;
+    const u = g.dataset.u;
+    if (u[0] === 'S') { const id = +u.slice(2); show('flow'); return flow.open(scriptDir(GN[id]), id); }
+    const st = u.slice(2);
+    if (st === '(external inputs)') return;
+    expanded.has(st) ? expanded.delete(st) : expanded.add(st);
+    draw();
+  };
+  $('nexp').onclick = () => { steps.forEach(st => expanded.add(st)); draw(); };
+  $('ncol').onclick = () => { expanded.clear(); draw(); };
+  $('ninp').onchange = draw;
+  draw();
 }
 
 show(location.hash.slice(1) || 'flow');
