@@ -1,9 +1,12 @@
 """findMySource (fms): trace every output of a project back to the script(s) that made it.
 
 Usage (run from the project root):
-    fms [--config fms.json] [--out fms-report]
+    fms [--config fms.json] [--out fms-report]   scan, write the report, print a summary
+    fms <file>      where it came from (reads the last scan)
+    fms <script>    what it writes and reads
+    fms <folder>    possibly stale outputs in it (exit code 1 if any)
 
-Writes <out>/manifest.tsv, <out>/graph.json and <out>/index.html (tabs: flow, timeline, matrix, table, network).
+Writes <out>/manifest.tsv, <out>/graph.json and <out>/index.html (tabs: flow, timeline, matrix, table, steps, unmatched).
 
 Two engines, combined on one evidence scale (see RANK):
   * generic (default, any language): string literals, f-strings / ${var} / glue / .format,

@@ -23,19 +23,23 @@ and is it still up to date?* `findMySource` (`fms` on the command line) scans
 your scripts and output folders, matches the two up, and writes:
 
 - `fms-report/manifest.tsv`: one row per output file, with its source script(s),
-  match confidence, creation and modification dates, and the inputs of those scripts.
-- `fms-report/index.html`: an interactive report you can open in any browser:
+  match confidence, the line of code behind the match, creation and modification dates,
+  and the inputs of those scripts.
+- `fms-report/index.html`: an interactive report you can open in any browser, also offline:
   - **Flow**: a left-to-right map of the pipeline. Click a box to highlight
-    everything upstream and downstream of it. Folders with many files can be shown
-    as one box or as individual files.
+    everything upstream and downstream of it, and to see its details: the script that
+    wrote it, the line of code that links the two, dates, and inputs. Folders with many
+    files can be shown as one box or as individual files.
   - **Timeline**: when each output was last written, compared with its script's
     last change. An output is flagged as possibly stale when its script was edited more
     than an hour after the output was written. The table and timeline can filter for these.
   - **Matrix**: which scripts write into which folders.
-  - **Table**: a searchable, sortable version of the manifest.
+  - **Table**: a searchable, sortable version of the manifest. Click a row to show it in Flow.
   - **Steps**: an overview with one box per pipeline step (script folder). Arrows show
     which step reads files written by another. Click a step to expand it into its scripts,
     and click a script to open it in Flow.
+  - **Unmatched**: a folder tree of the output files no script could be linked to,
+    which shows what to add to `exclude` in `fms.json`.
 - `fms-report/graph.json`: the same graph, for your own tooling.
 
 `fms` needs no running pipeline, no workflow manager and no changes to your
@@ -69,11 +73,37 @@ An editable install (`-e`) picks up changes to the code without reinstalling.
 Run it from the root of the project you want to map:
 
 ```bash
-fms                        # uses ./fms.json if present, else scans the current folder
+fms                        # scan: uses ./fms.json if present, else scans the current folder
 fms --config fms.json --out fms-report
 ```
 
-Then open `fms-report/index.html`. Add `fms-report/` to your `.gitignore`.
+This prints a short summary and writes the report. Open `fms-report/index.html`, and
+add `fms-report/` to your `.gitignore`.
+
+Afterwards, ask about single files or folders. These read the last scan, so they are instant,
+and they work from any subfolder of the project:
+
+```bash
+fms figures/umap.pdf       # where did it come from: script, code line, dates, upstream chain
+fms scripts/02_model.Rmd   # what does this script write and read
+fms figures                # which outputs in this folder are possibly stale (exit code 1 if any)
+fms .                      # ... in the whole project
+```
+
+```
+$ fms figures/qc/pca.png
+figures/qc/pca.png
+  modified 2026-10-20T12:56:11  ⚠ possibly stale: script edited 30.0 days later
+  <- scripts/03_figures.R  (write, script last change 2026-11-19T11:56:11)
+       ggsave(file.path(fig_dir, "pca.png"))
+
+upstream:
+  figures/qc/pca.png  <- scripts/03_figures.R ⚠
+    results/de_table.tsv  <- scripts/02_model.Rmd
+      results/clean.rds  <- scripts/01_load.R
+        data/raw/counts.csv  (raw input)
+        data/raw/samples.xlsx  (raw input)
+```
 
 ### Configuration (`fms.json`, optional)
 
@@ -145,7 +175,6 @@ and `Makefile`. Set `extensions` in `fms.json` to change it.
   or passed in as a command-line argument, can only be matched through wildcards, or not at all.
 - Variables are inherited one level deep. If `a.R` sources `b.R`, which sources `c.R`,
   then `a.R` gets the variables of `b.R` only.
-- The Steps tab loads `vis-network` from a CDN. All other tabs work offline.
 
 ## Roadmap
 
@@ -157,12 +186,13 @@ and `Makefile`. Set `extensions` in `fms.json` to change it.
 ## Development
 
 ```bash
-pytest                           # or: python tests/test_core.py
+pytest                           # or: python tests/test_core.py; python tests/test_cli.py
 python tests/test_examples.py    # score on the example projects (expected.json = ground truth)
 ```
 
 Browser check of the report: it takes screenshots of every tab, tests click-to-trace,
-the staleness filter, folder grouping and the Steps tab, and fails on any console error.
+the details panel, the staleness filter, folder grouping, the Steps and Unmatched tabs, and fails
+on any console error or any network request (the report must work offline).
 [uv](https://docs.astral.sh/uv/) installs Playwright on the fly:
 ```bash
 uvx playwright@1.64.1 install chromium     # once (add --with-deps on Debian/Ubuntu)
