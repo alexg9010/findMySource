@@ -70,6 +70,8 @@ def main():
                     print(f"flow: {n} boxes, {dimmed} dimmed after clicking the right-most one")
                     if not dimmed:
                         problems.append("flow: clicking a leaf dimmed nothing")
+                    if not page.is_visible("#det") or not page.inner_text("#det").strip():
+                        problems.append("flow: clicking a box shows no details panel")
                     snap(page, "flow-click")
                     leaf.hover()
                     if not page.eval_on_selector("#tip", "t => t.style.display === 'block' && t.textContent"):
@@ -88,6 +90,10 @@ def main():
                 after = page.locator("#tb tr").count()
                 print(f"table: {before - 1} rows, {after - 1} possibly stale")
                 snap(page, "table-stale")
+                page.click("#tb tr[data-o] >> nth=0")  # a row opens Flow with the file's details
+                if not page.is_visible("#flow") or not page.is_visible("#det"):
+                    problems.append("table: clicking a row does not open it in Flow")
+                snap(page, "table-to-flow")
             page.close()
 
         # network: vis-network comes from a CDN; wait for its canvas or the offline message
