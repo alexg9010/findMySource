@@ -137,15 +137,21 @@ def test_build_copies_of_scripts_are_skipped_but_outputs_there_are_kept():
 
 def test_paths_into_another_clone_and_chunk_figures():
     with tempfile.TemporaryDirectory() as t:
-        root = os.path.join(os.path.realpath(t), "proj")
+        root = os.path.join(os.path.realpath(t), "x_files", "proj")  # an ancestor ending in _files
         write(f"{root}/out/plots/pca.pdf")
+        write(f"{root}/out/aliased/pca.pdf")
         write(f"{root}/nb/a_files/figure-gfm/chunk-1.png")
+        write(f"{root}/nb/a.qmd")  # shares a_files/ with a.Rmd
         write(f"{root}/nb/a.Rmd", '```{r}\noutplot <- "/home/colleague/proj/out/plots/"\n'
-                                  'ggsave(file = file.path(outplot, "pca.pdf"))\n```\n')
+                                  'ggsave(file = file.path(outplot, "pca.pdf"))\n'
+                                  'ggsave(file = "/old/proj/out/aliased/pca.pdf")\n```\n')
+        write(f"{root}/fms.json", '{"aliases": {"/old/proj": "/nowhere/proj"}}')
         rows = run_fms(root)
         assert rows["out/plots/pca.pdf"]["sources"] == "nb/a.Rmd"
         assert rows["out/plots/pca.pdf"]["evidence"] == "write"
-        assert rows["nb/a_files/figure-gfm/chunk-1.png"]["evidence"] == "stem-rule"
+        assert rows["out/aliased/pca.pdf"]["evidence"] == "unmatched"  # the alias wins, even pointing nowhere
+        chunk = rows["nb/a_files/figure-gfm/chunk-1.png"]
+        assert chunk["evidence"] == "stem-rule;stem-rule" and sorted(chunk["sources"].split(";")) == ["nb/a.Rmd", "nb/a.qmd"]
 
 
 def test_git_dates_keep_the_time_zone():

@@ -144,7 +144,7 @@ upstream:
 |---|---|---|
 | `scripts` | folders (or single files) to search for scripts | `["."]` |
 | `outputs` | folders to search for output files; symlinks listed here are followed | `["."]` |
-| `aliases` | path prefixes that mean the same place, e.g. a mount visible as both `/local` and `/data/local`. Symlinks are resolved automatically and need no alias, and so are paths into another copy of the project: `/home/colleague/myproject/out/x.pdf` counts as `out/x.pdf` when the project folder is also called `myproject`. | `{}` |
+| `aliases` | path prefixes that mean the same place, e.g. a mount visible as both `/local` and `/data/local`. Symlinks are resolved automatically and need no alias, and so are paths into another copy of the project: `/home/colleague/myproject/out/x.pdf` counts as `out/x.pdf` when the project folder is also called `myproject` and the colleague's folder does not exist here. A configured alias takes precedence. | `{}` |
 | `exclude` | file and folder name globs to skip | RStudio, cache and editor files; for scripts also `build` and `dist` (packaging copies) |
 | `hidden` | also scan hidden folders (`.git`, `.snakemake`, …). A hidden folder listed in `scripts`/`outputs` is always scanned. | `false` |
 | `extensions` | script types to parse | all types listed under [How it works](#how-it-works) |

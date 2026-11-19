@@ -308,8 +308,8 @@ def make_norm(aliases, root):
         d = p.split("*", 1)[0].rpartition("/")[0]
         return p if os.path.exists(d) else root + p[i + len(name) - 1:]
     def resolve(p, script):
-        p = alias(os.path.expanduser(p))
-        if p.startswith("/"): p = moved(p)
+        p0 = os.path.expanduser(p); p = alias(p0)
+        if p == p0 and p.startswith("/"): p = moved(p)  # a configured alias wins
         if p.startswith(("/", "*")): return [real(p)]
         rel = re.sub(r"^(\./)+", "", p)
         cands = [real(alias(os.path.normpath(os.path.join(b, rel)))) for b in (os.path.dirname(script), root)]
@@ -535,10 +535,13 @@ def scan(a):
                 if os.path.exists(stem + suf):
                     rep[stem + suf].add(s)
                     stat.setdefault(stem + suf, os.stat(stem + suf))
-    nb = {os.path.splitext(s)[0]: s for s in scripts if s.lower().endswith((".rmd", ".qmd", ".ipynb"))}
-    for f in stat:  # chunk figures that knitr/Quarto put in <stem>_files/
+    nb = defaultdict(set)  # a.Rmd and a.qmd may share a_files/
+    for s in scripts:
+        if s.lower().endswith((".rmd", ".qmd", ".ipynb")): nb[os.path.splitext(s)[0]].add(s)
+    for f in stat:  # chunk figures that knitr/Quarto put in <stem>_files/ (an ancestor may also end in _files)
         i = f.find("_files/")
-        if i > 0 and f[:i] in nb: rep[f].add(nb[f[:i]])
+        while i > 0 and f[:i] not in nb: i = f.find("_files/", i + 1)
+        if i > 0: rep[f] |= nb[f[:i]]
     # nothing changed since the last scan (scripts, their dates, every file and its timestamp, config)? then the
     # report on disk is still right
     fp = hashlib.sha1(json.dumps([tool, cfg, root, [(s, info[s]["modified"], parsed[s]["key"]) for s in scripts]]).encode())
