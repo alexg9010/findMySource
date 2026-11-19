@@ -392,7 +392,8 @@ def last_change(path, commit, dirty):
     files committed long after they were written (mtime is older -> mtime wins)."""
     mtime = os.stat(path).st_mtime
     d = None if path in dirty else commit.get(path)
-    return min(mtime, datetime.datetime.fromisoformat(d).timestamp()) if d else mtime
+    # git writes UTC as "...Z", which fromisoformat only reads from Python 3.11 on
+    return min(mtime, datetime.datetime.fromisoformat(d.replace("Z", "+00:00")).timestamp()) if d else mtime
 
 def walk(roots, exclude, hidden=False, skip=()):
     """Yield files under roots. Hidden folders (.git, .snakemake, ...) are skipped unless hidden=True;

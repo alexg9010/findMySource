@@ -29,7 +29,7 @@ index.html). README.md describes behaviour for users; keep it in sync with the c
 ## Check before committing
 
 ```bash
-uvx pytest -q                 # all tests; CI also runs Python 3.8-3.14 and macOS
+uvx pytest -q                 # all tests; CI also runs Python 3.8-3.14
 uv run tests/visual.py        # if view.html or graph output changed
 ```
 
