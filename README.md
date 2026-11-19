@@ -149,6 +149,25 @@ upstream:
 | `hidden` | also scan hidden folders (`.git`, `.snakemake`, …). A hidden folder listed in `scripts`/`outputs` is always scanned. | `false` |
 | `extensions` | script types to parse | all types listed under [How it works](#how-it-works) |
 
+### Large projects
+
+Every scan checks every file under `outputs`, so time grows with the number of files:
+roughly 2.5 s for an unchanged rerun and 6 to 8 s for a full scan of 100,000 files.
+Most of these are usually raw data or tool output that no script of yours writes.
+The **Unmatched** tab shows which folders they are. Skip them to make every run near-instant:
+
+```json
+{
+  "outputs": ["results", "figures", "/data/project"],
+  "exclude": ["*.RData", "*_cache", "04_mapping", "imputation_reference", "*.bam", "*.bai"]
+}
+```
+
+`exclude` matches file and folder *names* anywhere under `outputs`. Setting it replaces the
+default list, so keep the defaults you need. Log files can be skipped the same way (`"*.log"`),
+but only if your scripts don't write logs you care about: those are often matched, and they
+record how an output was made.
+
 ## How it works
 
 `fms` doesn't need to know your language's save functions. It reads scripts as text.

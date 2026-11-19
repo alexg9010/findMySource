@@ -319,10 +319,12 @@ class Index:
         self.by_base = defaultdict(list)
         self.by_dir = defaultdict(list)
         self.by_ext = defaultdict(list)
-        for f in self.files:
-            self.by_base[os.path.basename(f)].append(f)
-            self.by_dir[os.path.dirname(f)].append(f)
-            self.by_ext[os.path.splitext(f)[1]].append(f)
+        for f in self.files:  # one split per path (108k files: os.path.* calls add up)
+            d, _, b = f.rpartition("/")
+            i = b.rfind(".")
+            self.by_base[b].append(f)
+            self.by_dir[d].append(f)
+            self.by_ext[b[i:] if i > 0 else ""].append(f)  # same as os.path.splitext
     def match(self, pat):
         """-> (list of files, 'exact'|'glob')"""
         if "*" not in pat:
@@ -417,6 +419,29 @@ STALE_SECONDS = 3600
 RANK = {"write": 0, "stem-rule": 1, "name": 2, "write-glob": 3, "lang-write": 4, "lang-glob": 5,
         "mention": 6, "mention-glob": 7}
 
+def _parse1(s):
+    """first pass over one script: own variables, script references, statements, R fallback"""
+    src, params = read_code(s)
+    g = generic_scan(src, params, vars_only=True)
+    return {"params": params, "uses": sorted(g["uses"]), "vars": g["vars"], "stmts": g["stmts"],
+            "lang": parse_script(src, params)}
+
+def _parse2(job):
+    """second pass: evidence, with the variables inherited from source()d / imported scripts"""
+    s, v0, stmts = job
+    g = generic_scan(read_code(s)[0], v0, stmts=stmts)
+    return [list(e) for e in g["ev"]], sorted(g["names"])
+
+def pmap(fn, items):
+    """map over processes (parsing is CPU-bound); serial for a few items, or where processes are unavailable"""
+    if len(items) < 8: return [fn(x) for x in items]
+    from concurrent.futures import ProcessPoolExecutor
+    try:
+        with ProcessPoolExecutor() as ex:
+            return list(ex.map(fn, items, chunksize=max(1, len(items) // (4 * (os.cpu_count() or 1)))))
+    except (OSError, ImportError, NotImplementedError):  # e.g. no /dev/shm in some sandboxes
+        return [fn(x) for x in items]
+
 def took(t0):
     s = time.monotonic() - t0
     return f"{s:.1f} s" if s < 60 else f"{int(s // 60)} min {int(s % 60)} s"
@@ -439,7 +464,8 @@ def scan(a):
     aliases = {k: (v if v.startswith("/") else os.path.normpath(os.path.join(root, v)))
                for k, v in cfg.get("aliases", {}).items()}
     resolve = make_norm(aliases, root)
-    rel = lambda p: os.path.relpath(p, root) if p.startswith(root + "/") else p
+    pre = root + "/"
+    rel = lambda p: p[len(pre):] if p.startswith(pre) else p  # paths are already absolute and normalised
 
     # cache in the report folder: the parse of every script (keyed by its mtime and size) and a fingerprint of the
     # whole scan. Thrown away when fms itself changes.
@@ -450,32 +476,28 @@ def scan(a):
         if old.get("tool") != tool: old = {}
     except (OSError, ValueError): old = {}
     cached, parsed = old.get("scripts", {}), {}
-    code_of = {}
-    def code(s):  # read lazily: unchanged scripts are not read at all
-        if s not in code_of: code_of[s] = read_code(s)
-        return code_of[s]
 
     # 1. scripts: generic engine twice (own variables first, then with variables of source()d/imported scripts)
     scripts = sorted({s for s in walk(cfg.get("scripts", ["."]), script_exclude, hidden, skip=[out])
                       if s.lower().endswith(exts)})
     commit, dirty = git_dates(root, scripts)
-    info = {}
+    info, keys = {}, {}
     for s in scripts:
         try: st = os.stat(s)
         except OSError: continue
-        c = cached.get(s)
-        if not c or c["key"] != [st.st_mtime_ns, st.st_size]:
-            src, params = code(s)
-            g = generic_scan(src, params, vars_only=True)
-            c = {"key": [st.st_mtime_ns, st.st_size], "params": params, "uses": sorted(g["uses"]), "vars": g["vars"],
-                 "stmts": g["stmts"], "lang": parse_script(src, params)}
-        parsed[s] = c
+        keys[s] = [st.st_mtime_ns, st.st_size]
+        if s in cached and cached[s]["key"] == keys[s]: parsed[s] = cached[s]
+    todo = [s for s in keys if s not in parsed]  # new or changed scripts (unchanged ones are not even read)
+    for s, c in zip(todo, pmap(_parse1, todo)): parsed[s] = {"key": keys[s], **c}
+    for s in keys:
+        c = parsed[s]
         # git date unless the file has uncommitted changes (then its mtime is the real last change)
         changed = last_change(s, commit, dirty)
         info[s] = {"modified": ts(changed), "mtime": changed, **{k: c[k] for k in ("uses", "vars", "stmts", "lang")}}
     scripts = [s for s in scripts if s in info]
     by_name = defaultdict(list)
     for s in scripts: by_name[os.path.basename(s)].append(s)
+    jobs = []
     for s in scripts:
         used = []
         for u in info[s]["uses"]:
@@ -485,11 +507,12 @@ def scan(a):
         c = parsed[s]
         v0 = {**{k: val for u in used for k, val in info[u]["vars"].items()}, **c["params"]}
         vh = hashlib.sha1(json.dumps(v0, sort_keys=True).encode()).hexdigest()
-        if c.get("vh") != vh:  # new script, or the variables it inherits changed
-            g = generic_scan(code(s)[0], v0, stmts=c["stmts"])
-            c.update(vh=vh, ev=[list(e) for e in g["ev"]], names=sorted(g["names"]))
-        info[s].update(ev=c["ev"], names=c["names"], used=used)
-    print(f"parsed {len(scripts)} scripts ({len(code_of)} read, {len(scripts) - len(code_of)} from cache) in {took(t0)}", file=sys.stderr)
+        if c.get("vh") != vh: jobs.append((s, vh, v0))  # new script, or the variables it inherits changed
+        info[s]["used"] = used
+    for (s, vh, _), (ev, names) in zip(jobs, pmap(_parse2, [(s, v0, parsed[s]["stmts"]) for s, _, v0 in jobs])):
+        parsed[s].update(vh=vh, ev=ev, names=names)
+    for s in scripts: info[s].update(ev=parsed[s]["ev"], names=parsed[s]["names"])
+    print(f"parsed {len(scripts)} scripts ({len(todo)} read, {len(scripts) - len(todo)} from cache) in {took(t0)}", file=sys.stderr)
 
     # 2. files (one stat each)
     stat = {}
@@ -531,7 +554,7 @@ def scan(a):
         if RANK[label] < RANK.get(src_of[f].get(s), 99): src_of[f][s] = label; why[f, s] = code
     edges, reads_of = set(), defaultdict(set)
     by_stem = defaultdict(list)
-    for f in stat: by_stem[os.path.basename(f).split(".")[0]].append(f)
+    for f in stat: by_stem[f.rpartition("/")[2].split(".")[0]].append(f)
     for s, d in info.items():
         for p, kind, code in d["ev"]:
             hit, conf = match(p, s)
@@ -569,14 +592,19 @@ def scan(a):
     with open(os.path.join(a.out, "manifest.tsv"), "w") as m:
         m.write("output\tsources\tevidence\toutput_created\toutput_modified\tsource_modified\tstale_days\tinputs\tevidence_code\n")
         for f in outputs:
-            st, ss = stat[f], src_of.get(f, {})
+            st, ss = stat[f], src_of.get(f)
+            c = created(st)
+            t = ts(c)  # created == modified on Linux (no birth time): format once
+            dates = t + "\t" + (t if c == st.st_mtime else ts(st.st_mtime))
+            if not ss:  # most files: short path
+                m.write(f"{rel(f)}\t\tunmatched\t{dates}\t\t\t\t\n"); continue
             # best confidence first; ties -> script whose last change is closest before the output
             order = sorted(ss, key=lambda s: (info[s]["mtime"] > st.st_mtime, -info[s]["mtime"]))
             gap = max((info[s]["mtime"] for s in order), default=0) - st.st_mtime
             if order and gap > STALE_SECONDS: stale[f] = round(gap / 86400, 1)
             m.write("\t".join([
                 rel(f), ";".join(rel(s) for s in order), ";".join(ss[s] for s in order) or "unmatched",
-                ts(created(st)), ts(st.st_mtime), ";".join(info[s]["modified"] for s in order),
+                dates, ";".join(info[s]["modified"] for s in order),
                 str(stale.get(f, "")),
                 ";".join(sorted({rel(i) for s in order for i in reads_of[s]}))[:2000],
                 " ;; ".join(" ".join(why.get((f, s), "").split()) for s in order)]) + "\n")
@@ -631,7 +659,7 @@ def scan(a):
     graph = {"nodes": nodes, "edges": [{"from": x, "to": y, "kind": k} for x, y, k in sorted(gedges)]}
     json.dump(graph, open(os.path.join(a.out, "graph.json"), "w"))
 
-    unm = Counter(os.path.dirname(rel(f)) or "." for f in outputs if f not in src_of)
+    unm = Counter(rel(f).rpartition("/")[0] or "." for f in outputs if f not in src_of)
     data = {"graph": graph, "rows": rows, "unm": unm, "scripts": [{"p": rel(x), "m": info[x]["modified"]} for x in scripts],
             "unmatched": len(outputs) - len(rows), "root": root,
             "generated": datetime.datetime.now().astimezone().isoformat(timespec="minutes")}
