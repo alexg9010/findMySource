@@ -1,0 +1,8 @@
+#!/bin/sh
+# refuse to create or move a version tag that does not match __version__ (see check-tag)
+[ "$1" = prepared ] || exit 0
+while read -r old new ref; do
+  case "$ref" in refs/tags/*) ;; *) continue ;; esac
+  [ "$new" = 0000000000000000000000000000000000000000 ] && continue  # deletion
+  "$(dirname "$0")/check-tag" "${ref#refs/tags/}" "$new" || exit 1
+done

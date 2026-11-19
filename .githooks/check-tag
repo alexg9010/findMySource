@@ -1,0 +1,7 @@
+#!/bin/sh
+# usage: check-tag <tag name> <object>: fail if tag vX.Y.Z points at a commit whose __version__ is not X.Y.Z
+case "$1" in v[0-9]*) ;; *) exit 0 ;; esac
+v=$(git show "$2^{commit}:findmysource/__init__.py" 2>/dev/null | sed -n 's/^__version__ = "\(.*\)"/\1/p')
+[ "v$v" = "$1" ] && exit 0
+echo "tag $1: findmysource/__init__.py at that commit says __version__ = \"$v\". Bump the version first." >&2
+exit 1

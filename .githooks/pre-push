@@ -1,0 +1,5 @@
+#!/bin/sh
+# never push a version tag that does not match __version__ (for tags made before the hooks were enabled)
+while read -r lref lsha rref rsha; do
+  case "$lref" in refs/tags/*) "$(dirname "$0")/check-tag" "${lref#refs/tags/}" "$lsha" || exit 1 ;; esac
+done

@@ -209,6 +209,10 @@ and `Makefile`. Set `extensions` in `fms.json` to change it.
 ## Development
 
 ```bash
+git config core.hooksPath .githooks   # once: refuses version tags (vX.Y.Z) that do not match __version__
+```
+
+```bash
 pytest                           # or: python tests/test_core.py; python tests/test_cli.py
 python tests/test_examples.py    # score on the example projects (expected.json = ground truth)
 ```
