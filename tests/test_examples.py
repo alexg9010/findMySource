@@ -5,6 +5,7 @@
 import csv
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -16,10 +17,11 @@ import set_dates  # noqa: E402
 
 def run(project):
     """-> (list of mismatch messages, number of outputs checked)."""
-    root = os.path.join(REPO, "examples", project)
-    set_dates.main(root)
-    exp = json.load(open(os.path.join(root, "expected.json")))
-    with tempfile.TemporaryDirectory() as out:
+    with tempfile.TemporaryDirectory() as tmp:
+        root, out = os.path.join(tmp, project), os.path.join(tmp, "out")
+        shutil.copytree(os.path.join(REPO, "examples", project), root)  # set_dates changes file dates
+        set_dates.main(root)
+        exp = json.load(open(os.path.join(root, "expected.json")))
         subprocess.run([sys.executable, "-m", "findmysource", "--out", out], cwd=root, check=True,
                        env={**os.environ, "PYTHONPATH": REPO}, capture_output=True)
         rows = {r["output"]: r for r in csv.DictReader(open(os.path.join(out, "manifest.tsv")), delimiter="\t")}
