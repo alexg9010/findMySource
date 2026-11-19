@@ -135,6 +135,19 @@ def test_build_copies_of_scripts_are_skipped_but_outputs_there_are_kept():
         assert rows["build/report.pdf"]["sources"] == "make_results.py"
 
 
+def test_paths_into_another_clone_and_chunk_figures():
+    with tempfile.TemporaryDirectory() as t:
+        root = os.path.join(os.path.realpath(t), "proj")
+        write(f"{root}/out/plots/pca.pdf")
+        write(f"{root}/nb/a_files/figure-gfm/chunk-1.png")
+        write(f"{root}/nb/a.Rmd", '```{r}\noutplot <- "/home/colleague/proj/out/plots/"\n'
+                                  'ggsave(file = file.path(outplot, "pca.pdf"))\n```\n')
+        rows = run_fms(root)
+        assert rows["out/plots/pca.pdf"]["sources"] == "nb/a.Rmd"
+        assert rows["out/plots/pca.pdf"]["evidence"] == "write"
+        assert rows["nb/a_files/figure-gfm/chunk-1.png"]["evidence"] == "stem-rule"
+
+
 def test_git_dates_keep_the_time_zone():
     with tempfile.TemporaryDirectory() as root:
         root = os.path.realpath(root)  # git reports resolved paths (/tmp is a symlink on macOS)
@@ -182,6 +195,7 @@ if __name__ == "__main__":
     test_core()
     test_report_is_not_scanned_on_a_repeat_run()
     test_build_copies_of_scripts_are_skipped_but_outputs_there_are_kept()
+    test_paths_into_another_clone_and_chunk_figures()
     test_git_dates_keep_the_time_zone()
     test_git_dates_ignore_paths_outside_the_repository()
     test_last_change_of_a_script()

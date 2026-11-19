@@ -301,8 +301,15 @@ def make_norm(aliases, root):
         pre = p.split("*", 1)[0]
         d = pre[:pre.rfind("/")]
         return (os.path.realpath(d) if d else "") + p[len(d):] if p.startswith("/") else p
+    name = "/" + os.path.basename(root) + "/"
+    def moved(p):  # another clone of this project (a colleague's home, an old server path): map it here
+        i = p.find(name)
+        if i < 0 or p.startswith(root + "/"): return p
+        d = p.split("*", 1)[0].rpartition("/")[0]
+        return p if os.path.exists(d) else root + p[i + len(name) - 1:]
     def resolve(p, script):
         p = alias(os.path.expanduser(p))
+        if p.startswith("/"): p = moved(p)
         if p.startswith(("/", "*")): return [real(p)]
         rel = re.sub(r"^(\./)+", "", p)
         cands = [real(alias(os.path.normpath(os.path.join(b, rel)))) for b in (os.path.dirname(script), root)]
@@ -528,6 +535,10 @@ def scan(a):
                 if os.path.exists(stem + suf):
                     rep[stem + suf].add(s)
                     stat.setdefault(stem + suf, os.stat(stem + suf))
+    nb = {os.path.splitext(s)[0]: s for s in scripts if s.lower().endswith((".rmd", ".qmd", ".ipynb"))}
+    for f in stat:  # chunk figures that knitr/Quarto put in <stem>_files/
+        i = f.find("_files/")
+        if i > 0 and f[:i] in nb: rep[f].add(nb[f[:i]])
     # nothing changed since the last scan (scripts, their dates, every file and its timestamp, config)? then the
     # report on disk is still right
     fp = hashlib.sha1(json.dumps([tool, cfg, root, [(s, info[s]["modified"], parsed[s]["key"]) for s in scripts]]).encode())

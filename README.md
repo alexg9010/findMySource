@@ -144,7 +144,7 @@ upstream:
 |---|---|---|
 | `scripts` | folders (or single files) to search for scripts | `["."]` |
 | `outputs` | folders to search for output files; symlinks listed here are followed | `["."]` |
-| `aliases` | path prefixes that mean the same place, e.g. a mount visible as both `/local` and `/data/local`. Symlinks are resolved automatically and need no alias. | `{}` |
+| `aliases` | path prefixes that mean the same place, e.g. a mount visible as both `/local` and `/data/local`. Symlinks are resolved automatically and need no alias, and so are paths into another copy of the project: `/home/colleague/myproject/out/x.pdf` counts as `out/x.pdf` when the project folder is also called `myproject`. | `{}` |
 | `exclude` | file and folder name globs to skip | RStudio, cache and editor files; for scripts also `build` and `dist` (packaging copies) |
 | `hidden` | also scan hidden folders (`.git`, `.snakemake`, …). A hidden folder listed in `scripts`/`outputs` is always scanned. | `false` |
 | `extensions` | script types to parse | all types listed under [How it works](#how-it-works) |
@@ -194,7 +194,7 @@ record how an output was made.
    | evidence | meaning |
    |---|---|
    | `write` | writes to exactly this path |
-   | `stem-rule` | rendered report (`analysis.html`) next to its `analysis.Rmd` / `.qmd` / `.ipynb` |
+   | `stem-rule` | rendered report (`analysis.html`) next to its `analysis.Rmd` / `.qmd` / `.ipynb`, and the chunk figures in `analysis_files/` |
    | `name` | passes this file name to a writing function, e.g. `save_table(df, "de_table")` |
    | `write-glob` | writes to a path that matches only through wildcards |
    | `lang-write`, `lang-glob` | language-specific fallback, currently R: known write functions without a write verb in their name, such as `pdf()` and `png()` |
