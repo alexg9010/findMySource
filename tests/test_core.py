@@ -1,11 +1,34 @@
 """Run with `pytest` or plain `python tests/test_core.py`."""
+import csv
 import os
+import subprocess
 import sys
 import tempfile
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # run without installing
 
-from findmysource.cli import Index, evaluate, generic_scan, make_norm, parse_script, read_code, statements, walk
+from findmysource.cli import (Index, evaluate, generic_scan, git_dates, make_norm, parse_script, path_batches,
+                              read_code, statements, ts, walk)
+
+REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
+def run_fms(root, out="fms-report"):
+    """run the CLI in root; -> manifest rows by output path"""
+    subprocess.run([sys.executable, "-m", "findmysource", "--out", out], cwd=root, check=True,
+                   env={**os.environ, "PYTHONPATH": REPO}, capture_output=True)
+    with open(os.path.join(root, out, "manifest.tsv")) as fh:
+        return {r["output"]: r for r in csv.DictReader(fh, delimiter="\t")}
+
+
+def write(path, text=""):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w") as fh: fh.write(text)
+
+
+def git(root, *args, env=None):
+    subprocess.run(["git", "-c", "user.email=t@example.com", "-c", "user.name=t", *args], cwd=root,
+                   env={**os.environ, **(env or {})}, check=True, capture_output=True)
 
 
 def test_generic():
@@ -90,7 +113,57 @@ write.csv(d, here::here("tables", "t.csv"))
         assert list(walk([f"{t}/w/.hidden"], [])) == [f"{t}/w/.hidden/sub/y"]  # explicit hidden root is scanned
 
 
+def test_report_is_not_scanned_on_a_repeat_run():
+    with tempfile.TemporaryDirectory() as root:
+        write(f"{root}/results/answer.csv")
+        write(f"{root}/make_results.py", 'save_table(data, "results/answer.csv")\n')
+        run_fms(root)
+        rows = run_fms(root)
+        assert "results/answer.csv" in rows
+        assert not any(p.startswith("fms-report/") for p in rows)
+
+
+def test_build_copies_of_scripts_are_skipped_but_outputs_there_are_kept():
+    with tempfile.TemporaryDirectory() as root:
+        write(f"{root}/results/answer.csv")
+        write(f"{root}/build/report.pdf")
+        for s in ("make_results.py", "build/lib/make_results.py"):
+            write(f"{root}/{s}", 'save_table(data, "results/answer.csv")\nsave_pdf(fig, "build/report.pdf")\n')
+        rows = run_fms(root)
+        assert rows["results/answer.csv"]["sources"] == "make_results.py"
+        assert rows["build/report.pdf"]["sources"] == "make_results.py"
+
+
+def test_git_dates_keep_the_time_zone():
+    with tempfile.TemporaryDirectory() as root:
+        root = os.path.realpath(root)  # git reports resolved paths (/tmp is a symlink on macOS)
+        write(f"{root}/script.py")
+        stamp = "2024-03-31T01:30:00+02:00"
+        git(root, "init", "-q"); git(root, "add", "script.py")
+        git(root, "commit", "-qm", "add", env={"GIT_AUTHOR_DATE": stamp, "GIT_COMMITTER_DATE": stamp})
+        assert git_dates(root)[0][f"{root}/script.py"] == stamp
+
+
+def test_git_dates_ignore_paths_outside_the_repository():
+    with tempfile.TemporaryDirectory() as t:
+        t = os.path.realpath(t)
+        write(f"{t}/repo/a.R"); write(f"{t}/outside.R")
+        git(f"{t}/repo", "init", "-q"); git(f"{t}/repo", "add", "a.R"); git(f"{t}/repo", "commit", "-qm", "a")
+        dates, _ = git_dates(f"{t}/repo", [f"{t}/repo/a.R", f"{t}/outside.R"])
+        assert list(dates) == [f"{t}/repo/a.R"]  # one outside path must not cost the others their dates
+
+
+def test_small_helpers():
+    assert ts(0)[-6] in "+-"  # local time with its offset: unambiguous
+    assert list(path_batches(["aaa", "bb", "cccc"], 5)) == [["aaa"], ["bb"], ["cccc"]]
+
+
 if __name__ == "__main__":
     test_generic()
     test_core()
+    test_report_is_not_scanned_on_a_repeat_run()
+    test_build_copies_of_scripts_are_skipped_but_outputs_there_are_kept()
+    test_git_dates_keep_the_time_zone()
+    test_git_dates_ignore_paths_outside_the_repository()
+    test_small_helpers()
     print("ok")

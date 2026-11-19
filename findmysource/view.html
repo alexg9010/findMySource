@@ -144,13 +144,16 @@ const dirOf = p => p.includes('/') ? p.slice(0, p.lastIndexOf('/')) : '.';
 const STALE_MS = 3600e3;
 const ago = ms => ms < 864e5 ? Math.round(ms / 3600e3) + ' h' : ms < 60 * 864e5 ? Math.round(ms / 864e5) + ' days' : Math.round(ms / (30.4 * 864e5)) + ' months';
 const staleBy = r => { const g = Math.max(...r.sm.map(s => new Date(s).getTime())) - new Date(r.m).getTime(); return g > STALE_MS ? g : 0; };
+const day = s => (s || '').replace('T', ' ').slice(0, 19);  // "2026-11-19T12:05:00+01:00" -> "2026-11-19 12:05:00"
 const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
 const NCOL = {script: '--script', file: '--file', group: '--group', input: '--input'};
 const ECOL = {writes: '--script', reads: '--read', source: '--src'};
 const PATH = n => n.title.split('\n')[0], scriptDir = n => dirOf(PATH(n));
 const NODE = {}, WRITER = {}, ROW = Object.fromEntries(D.rows.map(r => [r.o, r]));
 G.nodes.forEach(n => { if (n.group !== 'group' && NODE[PATH(n)] === undefined) NODE[PATH(n)] = n.id; });
-G.edges.forEach(e => { if (e.kind === 'writes' && WRITER[e.to] === undefined) WRITER[e.to] = e.from; });
+const WRITERS = {};  // every script that writes a node (a file can have several equally strong sources)
+G.edges.forEach(e => { if (e.kind === 'writes') (WRITERS[e.to] = WRITERS[e.to] || []).push(e.from); });
+for (const id in WRITERS) WRITER[id] = WRITERS[id][0];
 // pipeline step = folder of the script (of the writing script, for files)
 const stepOf = id => G.nodes[id].group === 'script' ? scriptDir(G.nodes[id])
   : WRITER[id] !== undefined ? scriptDir(G.nodes[WRITER[id]]) : '(external inputs)';
@@ -161,7 +164,7 @@ const flowStep = id => {  // external inputs live in the step of the first scrip
 function openPath(p) { const id = NODE[p]; if (id !== undefined) { show('flow'); flow.open(flowStep(id), id); } }
 
 /* header */
-$('sub').textContent = D.root + ' · generated ' + D.generated;
+$('sub').textContent = D.root + ' · generated ' + day(D.generated);
 const scriptsUsed = new Set(D.rows.flatMap(r => r.s)).size;
 $('stats').innerHTML = [[D.scripts.length, 'scripts parsed'], [scriptsUsed, 'scripts with outputs'],
   [D.rows.length, 'matched outputs', 'table'], [D.rows.filter(staleBy).length, 'possibly stale', 'stale'],
@@ -232,7 +235,7 @@ function place(items, E, {W, H, GX, GY, PAD}, tie) {
     col.forEach((n, i) => pos[n.id] = {x: PAD + c * (W + GX), y: PAD + i * (H + GY)});
     maxRows = Math.max(maxRows, col.length);
   });
-  return {pos, Wn: PAD * 2 + cols.length * (W + GX) - GX, Hn: PAD * 2 + maxRows * (H + GY)};
+  return {pos, Wn: PAD * 2 + Math.max(W, cols.length * (W + GX) - GX), Hn: PAD * 2 + Math.max(H, maxRows * (H + GY))};
 }
 /* fit the map into its card, but never shrink text below ~45% (then scroll instead); returns the scale */
 function sizeSvg(svg, card, Wn, Hn, fit) {
@@ -358,11 +361,11 @@ function flow() {
     } else {
       const r = ROW[p];
       if (r) {
-        h += `<div class="p">modified ${esc(r.m.replace('T', ' '))}</div>`;
+        h += `<div class="p">modified ${esc(day(r.m))}</div>`;
         if (staleBy(r)) h += `<div class="warn">⚠ script edited ${ago(staleBy(r))} after this file was written: possibly stale</div>`;
         r.s.forEach((s, i) => {
           h += `<div class="sec">made by</div>${NODE[s] !== undefined ? link(NODE[s]) : esc(s)} ${chip(r.c[i])}` +
-               `<div class="p">script last change ${esc((r.sm[i] || '').replace('T', ' '))}</div>` +
+               `<div class="p">script last change ${esc(day(r.sm[i]))}</div>` +
                ((r.x || [])[i] ? `<pre data-tip="the code that links the script to this file">${esc(r.x[i])}</pre>` : '');
         });
         const ins = [...new Set(r.s.flatMap(s => NODE[s] !== undefined ? into(NODE[s]) : []))];
@@ -477,8 +480,8 @@ function table() {
     $('tb').innerHTML = '<tr>' + heads.map(([k, l]) => `<th data-k="${k}">${l}${key === k ? (dir > 0 ? ' ▲' : ' ▼') : ''}</th>`).join('') + '</tr>' +
       rows.slice(0, 2000).map(r => `<tr data-o="${esc(r.o)}"><td class="p">${esc(r.o)}</td><td class="p">${r.s.map(esc).join('<br>')}</td>` +
         `<td>${r.c.map(chip).join('<br>')}</td>` + (staleBy(r)
-          ? `<td class="stale" data-tip="the script was edited ${ago(staleBy(r))} after this file was written: possibly stale">⚠ ${r.m.replace('T', ' ')}<br><small>script edited ${ago(staleBy(r))} later</small></td>`
-          : `<td>${r.m.replace('T', ' ')}</td>`) + `<td>${r.sm.map(x => x.replace('T', ' ')).join('<br>')}</td></tr>`).join('');
+          ? `<td class="stale" data-tip="the script was edited ${ago(staleBy(r))} after this file was written: possibly stale">⚠ ${day(r.m)}<br><small>script edited ${ago(staleBy(r))} later</small></td>`
+          : `<td>${day(r.m)}</td>`) + `<td>${r.sm.map(day).join('<br>')}</td></tr>`).join('');
     $('tb').querySelectorAll('th').forEach(th => th.onclick = () => { dir = key === th.dataset.k ? -dir : 1; key = th.dataset.k; draw(); });
   }
   $('q').oninput = $('cf').onchange = $('sf').onchange = draw;
@@ -488,19 +491,16 @@ function table() {
 
 /* ---------- steps overview: one box per script folder; expand a step into its scripts ---------- */
 function network() {
-  const GN = G.nodes, expanded = new Set(), steps = [...new Set(GN.map(n => stepOf(n.id)))];
-  // a node's box: its step when collapsed; its script (files fold into their writer) when expanded
-  const unit = id => {
-    const st = stepOf(id);
-    if (!expanded.has(st)) return 'C:' + st;
-    if (GN[id].group === 'script') return 'S:' + id;
-    return WRITER[id] !== undefined ? 'S:' + WRITER[id] : 'C:' + st;
-  };
+  const GN = G.nodes, expanded = new Set(), steps = [...new Set(GN.filter(n => n.group === 'script').map(scriptDir))];
+  // a node's boxes: its step when collapsed, its script when expanded. Files fold into every script that writes them.
+  const box = sid => expanded.has(scriptDir(GN[sid])) ? 'S:' + sid : 'C:' + scriptDir(GN[sid]);
+  const unitsOf = id => GN[id].group === 'script' ? [box(id)]
+    : WRITERS[id] ? [...new Set(WRITERS[id].map(box))] : ['C:(external inputs)'];
   const BW = 215, BH = 44;
   function draw() {
     const U = {}, W = {};
-    for (const n of GN) {
-      const u = unit(n.id), x = U[u] = U[u] || {id: u, scripts: 0, files: 0, stale: 0, step: stepOf(n.id)};
+    for (const n of GN) for (const u of unitsOf(n.id)) {
+      const x = U[u] = U[u] || {id: u, scripts: 0, files: 0, stale: 0, step: u[0] === 'C' ? u.slice(2) : scriptDir(GN[+u.slice(2)])};
       if (n.group === 'script') x.scripts++;
       else if (n.group !== 'group') { x.files++; if (n.stale) x.stale++; }
     }
@@ -508,8 +508,8 @@ function network() {
     for (const u of Object.keys(U)) if (hide(u)) delete U[u];
     for (const e of G.edges) {
       if (e.kind === 'writes') continue;
-      const a = unit(e.from), b = unit(e.to);
-      if (a !== b && !hide(a) && !hide(b)) W[a + '>' + b] = (W[a + '>' + b] || 0) + 1;
+      for (const a of unitsOf(e.from)) for (const b of unitsOf(e.to))
+        if (a !== b && !hide(a) && !hide(b)) W[a + '>' + b] = (W[a + '>' + b] || 0) + 1;
     }
     const items = Object.values(U), E = Object.entries(W).map(([k, n]) => { const [from, to] = k.split('>'); return {from, to, n}; });
     const name = x => x.id[0] === 'C' ? (x.step === '.' ? '(project root)' : x.step) : GN[+x.id.slice(2)].label;

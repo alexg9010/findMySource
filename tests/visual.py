@@ -43,97 +43,101 @@ def main():
 
     with sync_playwright() as p:
         browser = p.chromium.launch(executable_path=os.environ.get("CHROME") or None, args=["--no-sandbox"])
+        try:
 
-        def open_tab(tab, dark=False):
-            page = browser.new_page(viewport={"width": 1500, "height": 950}, color_scheme="dark" if dark else "light")
-            label = tab + ("-dark" if dark else "")
-            page.on("console", lambda m: m.type == "error" and problems.append(f"{label}: console: {m.text}"))
-            page.on("pageerror", lambda e: problems.append(f"{label}: page error: {e}"))
-            page.on("requestfailed", lambda r: problems.append(f"{label}: request failed: {r.url} ({r.failure})"))
-            # the report must work offline: any request that leaves the file system fails (and is reported above)
-            page.route("**/*", lambda r: r.continue_() if r.request.url.startswith("file:") else r.abort())
-            page.goto(f"{url}#{tab}", wait_until="load")
-            return page
+            def open_tab(tab, dark=False):
+                page = browser.new_page(viewport={"width": 1500, "height": 950}, color_scheme="dark" if dark else "light")
+                label = tab + ("-dark" if dark else "")
+                page.on("console", lambda m: m.type == "error" and problems.append(f"{label}: console: {m.text}"))
+                page.on("pageerror", lambda e: problems.append(f"{label}: page error: {e}"))
+                page.on("requestfailed", lambda r: problems.append(f"{label}: request failed: {r.url} ({r.failure})"))
+                # the report must work offline: any request that leaves the file system fails (and is reported above)
+                page.route("**/*", lambda r: r.continue_() if r.request.url.startswith("file:") else r.abort())
+                page.goto(f"{url}#{tab}", wait_until="load")
+                return page
 
-        def snap(page, name):
-            page.screenshot(path=os.path.join(shots, f"{name}.png"))
+            def snap(page, name):
+                page.screenshot(path=os.path.join(shots, f"{name}.png"))
 
-        for tab in ["flow", "timeline", "matrix", "table"]:
-            page = open_tab(tab)
-            snap(page, tab)
-            if tab == "flow":
-                boxes = page.locator("#fsvg .nd")
-                n = boxes.count()
-                if not n:
-                    problems.append("flow: no boxes drawn")
-                else:
-                    width = page.eval_on_selector("#fsvg", "e => e.getBoundingClientRect().width")
-                    card = page.eval_on_selector("#fcard", "e => e.clientWidth")
-                    if width > card + 1:
-                        problems.append(f"flow: map ({width:.0f}px) wider than its card ({card}px) in fit mode")
-                    # click the right-most box (a leaf output): everything not upstream of it must be dimmed
-                    xs = [boxes.nth(i).bounding_box()["x"] for i in range(n)]
-                    leaf = boxes.nth(xs.index(max(xs)))
-                    leaf.click()
-                    dimmed = page.locator("#fsvg .nd.dim").count()
-                    print(f"flow: {n} boxes, {dimmed} dimmed after clicking the right-most one")
-                    if not dimmed:
-                        problems.append("flow: clicking a leaf dimmed nothing")
-                    if not page.is_visible("#det") or not page.inner_text("#det").strip():
-                        problems.append("flow: clicking a box shows no details panel")
-                    snap(page, "flow-click")
-                    leaf.hover()
-                    if not page.eval_on_selector("#tip", "t => t.style.display === 'block' && t.textContent"):
-                        problems.append("flow: hovering a box shows no tooltip")
-                    page.select_option("#sel", "(all)")
-                    grouped = boxes.count()
-                    page.uncheck("#fold")
-                    ungrouped = boxes.count()
-                    print(f"flow (all): {grouped} boxes with folder groups, {ungrouped} without")
-                    if ungrouped < grouped:
-                        problems.append("flow: ungrouping folders reduced the number of boxes")
-                    snap(page, "flow-ungrouped")
-            if tab == "table":  # the staleness filter must narrow the table
-                before = page.locator("#tb tr").count()
-                page.select_option("#sf", "stale")
-                after = page.locator("#tb tr").count()
-                print(f"table: {before - 1} rows, {after - 1} possibly stale")
-                snap(page, "table-stale")
-                page.click("#tb tr[data-o] >> nth=0")  # a row opens Flow with the file's details
-                if not page.is_visible("#flow") or not page.is_visible("#det"):
-                    problems.append("table: clicking a row does not open it in Flow")
-                snap(page, "table-to-flow")
+            for tab in ["flow", "timeline", "matrix", "table"]:
+                page = open_tab(tab)
+                snap(page, tab)
+                if tab == "flow":
+                    boxes = page.locator("#fsvg .nd")
+                    n = boxes.count()
+                    if not n:
+                        problems.append("flow: no boxes drawn")
+                    else:
+                        width = page.eval_on_selector("#fsvg", "e => e.getBoundingClientRect().width")
+                        card = page.eval_on_selector("#fcard", "e => e.clientWidth")
+                        if width > card + 1:
+                            problems.append(f"flow: map ({width:.0f}px) wider than its card ({card}px) in fit mode")
+                        # click the right-most box (a leaf output): everything not upstream of it must be dimmed
+                        xs = [boxes.nth(i).bounding_box()["x"] for i in range(n)]
+                        leaf = boxes.nth(xs.index(max(xs)))
+                        leaf.click()
+                        dimmed = page.locator("#fsvg .nd.dim").count()
+                        print(f"flow: {n} boxes, {dimmed} dimmed after clicking the right-most one")
+                        if not dimmed:
+                            problems.append("flow: clicking a leaf dimmed nothing")
+                        if not page.is_visible("#det") or not page.inner_text("#det").strip():
+                            problems.append("flow: clicking a box shows no details panel")
+                        snap(page, "flow-click")
+                        leaf.hover()
+                        if not page.eval_on_selector("#tip", "t => t.style.display === 'block' && t.textContent"):
+                            problems.append("flow: hovering a box shows no tooltip")
+                        page.select_option("#sel", "(all)")
+                        grouped = boxes.count()
+                        page.uncheck("#fold")
+                        ungrouped = boxes.count()
+                        print(f"flow (all): {grouped} boxes with folder groups, {ungrouped} without")
+                        if ungrouped < grouped:
+                            problems.append("flow: ungrouping folders reduced the number of boxes")
+                        snap(page, "flow-ungrouped")
+                if tab == "table":  # the staleness filter must narrow the table
+                    before = page.locator("#tb tr").count()
+                    page.select_option("#sf", "stale")
+                    after = page.locator("#tb tr").count()
+                    print(f"table: {before - 1} rows, {after - 1} possibly stale")
+                    snap(page, "table-stale")
+                    page.click("#tb tr[data-o] >> nth=0")  # a row opens Flow with the file's details
+                    if not page.is_visible("#flow") or not page.is_visible("#det"):
+                        problems.append("table: clicking a row does not open it in Flow")
+                    snap(page, "table-to-flow")
+                page.close()
+
+            page = open_tab("network")
+            boxes = page.locator("#nsvg .nd")
+            collapsed = boxes.count()
+            snap(page, "steps")
+            page.click("#nexp")
+            expanded = boxes.count()
+            print(f"steps: {collapsed} boxes collapsed, {expanded} expanded")
+            if not collapsed:
+                problems.append("steps: no boxes drawn")
+            elif expanded <= collapsed:
+                problems.append("steps: 'expand all' did not add boxes")
+            snap(page, "steps-expanded")
             page.close()
 
-        page = open_tab("network")
-        boxes = page.locator("#nsvg .nd")
-        collapsed = boxes.count()
-        snap(page, "steps")
-        page.click("#nexp")
-        expanded = boxes.count()
-        print(f"steps: {collapsed} boxes collapsed, {expanded} expanded")
-        if not collapsed:
-            problems.append("steps: no boxes drawn")
-        elif expanded <= collapsed:
-            problems.append("steps: 'expand all' did not add boxes")
-        snap(page, "steps-expanded")
-        page.close()
+            page = open_tab("unmatched")  # folder tree: opening a folder draws its sub-folders
+            rows = page.locator("#utree summary")
+            n0 = rows.count()
+            if n0 and page.locator("#utree summary:not(.leaf)").count():
+                page.click("#utree summary:not(.leaf) >> nth=0")
+                page.wait_for_timeout(300)  # the toggle event that draws sub-folders is asynchronous
+            print(f"unmatched: {n0} top folders, {rows.count()} after opening the first")
+            if not n0 and "every output" not in page.inner_text("#utree"):
+                problems.append("unmatched: no folders drawn")
+            snap(page, "unmatched")
+            page.close()
 
-        page = open_tab("unmatched")  # folder tree: opening a folder draws its sub-folders
-        rows = page.locator("#utree summary")
-        n0 = rows.count()
-        if n0 and page.locator("#utree summary:not(.leaf)").count():
-            page.click("#utree summary:not(.leaf) >> nth=0")
-            page.wait_for_timeout(300)  # the toggle event that draws sub-folders is asynchronous
-        print(f"unmatched: {n0} top folders, {rows.count()} after opening the first")
-        if not n0 and "every output" not in page.inner_text("#utree"):
-            problems.append("unmatched: no folders drawn")
-        snap(page, "unmatched")
-        page.close()
+            page = open_tab("flow", dark=True)
+            snap(page, "flow-dark")
+            page.close()
 
-        page = open_tab("flow", dark=True)
-        snap(page, "flow-dark")
-        page.close()
+        except Exception as e:  # report what the page logged before the crash, not only the timeout
+            problems.append(f"check stopped: {str(e).splitlines()[0]}")
         browser.close()
 
     print(f"screenshots: {shots}")

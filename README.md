@@ -114,8 +114,8 @@ fms .                      # ... in the whole project
 ```
 $ fms figures/qc/pca.png
 figures/qc/pca.png
-  modified 2026-10-20T12:56:11  ⚠ possibly stale: script edited 30.0 days later
-  <- scripts/03_figures.R  (write, script last change 2026-11-19T11:56:11)
+  modified 2026-10-20T12:56:11+02:00  ⚠ possibly stale: script edited 30.0 days later
+  <- scripts/03_figures.R  (write, script last change 2026-11-19T11:56:11+01:00)
        ggsave(file.path(fig_dir, "pca.png"))
 
 upstream:
@@ -144,7 +144,7 @@ upstream:
 | `scripts` | folders (or single files) to search for scripts | `["."]` |
 | `outputs` | folders to search for output files; symlinks listed here are followed | `["."]` |
 | `aliases` | path prefixes that mean the same place, e.g. a mount visible as both `/local` and `/data/local`. Symlinks are resolved automatically and need no alias. | `{}` |
-| `exclude` | file and folder name globs to skip | RStudio, cache and editor files |
+| `exclude` | file and folder name globs to skip | RStudio, cache and editor files; for scripts also `build` and `dist` (packaging copies) |
 | `hidden` | also scan hidden folders (`.git`, `.snakemake`, …). A hidden folder listed in `scripts`/`outputs` is always scanned. | `false` |
 | `extensions` | script types to parse | all types listed under [How it works](#how-it-works) |
 
@@ -184,6 +184,8 @@ upstream:
 5. **Date.**
    - An output's date is its file modification time.
    - A script's date is its last git commit, or its file time if it has uncommitted changes.
+   - Dates are written in local time with their UTC offset, e.g. `2026-11-19T12:05:00+01:00`.
+   - The report folder itself is never scanned.
      An output is flagged as possibly stale when its script changed more than an hour after it.
 
 Scripts are recognised by extension. The default list covers R, R Markdown, Quarto, Python,

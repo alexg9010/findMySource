@@ -346,21 +346,38 @@ class Index:
         tail = pat.rsplit("*", 1)[1]  # cheap literal-suffix filter before the regex
         return [f for f in cands if f.endswith(tail) and rx.fullmatch(f)], "glob"
 
-def ts(t): return datetime.datetime.fromtimestamp(t).isoformat(timespec="seconds")
+def ts(t): return datetime.datetime.fromtimestamp(t).astimezone().isoformat(timespec="seconds")  # local, with offset
 def created(st): return getattr(st, "st_birthtime", st.st_mtime)
 
-def git_dates(root):
-    """-> (last-commit date per tracked path, set of dirty/untracked paths); empty if not a git repo."""
+def path_batches(paths, max_chars=32768):
+    """split paths into batches that stay well below the OS limit for command-line length"""
+    batch, size = [], 0
+    for p in paths:
+        if batch and size + len(p) + 1 > max_chars: yield batch; batch, size = [], 0
+        batch.append(p); size += len(p) + 1
+    if batch: yield batch
+
+def git_dates(root, paths=None):
+    """-> (last-commit date per tracked path, set of dirty/untracked paths); empty if not a git repo.
+    paths: only ask git about these files (much faster than the whole history). Paths outside the
+    repository are left out, so they cannot make git fail for the rest."""
     def git(*a):
-        try: return subprocess.run(["git", *a], cwd=root, capture_output=True, text=True).stdout
+        try: return subprocess.run(["git", "--literal-pathspecs", *a], cwd=top or root, capture_output=True, text=True).stdout
         except OSError: return ""
+    top = None
     top = git("rev-parse", "--show-toplevel").strip()
     if not top: return {}, set()
-    dates, cur = {}, None
-    for ln in git("log", "--format=@%cI", "--name-only").splitlines():  # newest first; first hit wins
-        if ln.startswith("@"): cur = ln[1:20]
-        elif ln: dates.setdefault(os.path.join(top, ln), cur)
-    dirty = {os.path.join(top, ln[3:].split(" -> ")[-1]) for ln in git("status", "--porcelain", "-uall").splitlines()}
+    if paths is None: batches = [[]]
+    else:
+        inside = [os.path.relpath(p, top) for p in map(os.path.realpath, paths) if p.startswith(top + os.sep)]
+        if not inside: return {}, set()
+        batches = list(path_batches(inside))
+    dates, dirty, cur = {}, set(), None
+    for b in batches:
+        for ln in git("log", "--format=@%cI", "--name-only", "--", *b).splitlines():  # newest first; first hit wins
+            if ln.startswith("@"): cur = ln[1:]  # keep the time-zone offset
+            elif ln: dates.setdefault(os.path.join(top, ln), cur)
+        dirty |= {os.path.join(top, ln[3:].split(" -> ")[-1]) for ln in git("status", "--porcelain", "-uall", "--", *b).splitlines()}
     return dates, dirty
 
 def last_change(path, commit, dirty):
@@ -372,15 +389,19 @@ def last_change(path, commit, dirty):
     d = None if path in dirty else commit.get(path)
     return min(mtime, datetime.datetime.fromisoformat(d).timestamp()) if d else mtime
 
-def walk(roots, exclude, hidden=False):
+def walk(roots, exclude, hidden=False, skip=()):
     """Yield files under roots. Hidden folders (.git, .snakemake, ...) are skipped unless hidden=True;
-    a hidden folder listed explicitly as a root is still scanned."""
+    a hidden folder listed explicitly as a root is still scanned. skip: folders never to enter
+    (the report folder, so that a report never becomes an output of the next scan)."""
     ex = re.compile("|".join(fnmatch.translate(e) for e in exclude) or "(?!)")
+    skip = {os.path.realpath(p) for p in skip}
     for r in roots:
         real = os.path.realpath(r)
+        if real in skip: continue
         if os.path.isfile(real): yield real; continue
         for d, ds, fs in os.walk(real):
-            ds[:] = [x for x in ds if not ex.match(x) and (hidden or not x.startswith("."))]
+            ds[:] = [x for x in ds if not ex.match(x) and (hidden or not x.startswith("."))
+                     and os.path.join(d, x) not in skip]
             for f in fs:
                 if not ex.match(f): yield os.path.join(d, f)
 
@@ -403,15 +424,19 @@ def scan(a):
     exts = tuple(e.lower() for e in cfg.get("extensions", list(SCRIPT_EXT) + ["snakefile", "makefile"]))
     exclude = cfg.get("exclude", ["rstudio-server-db", "rstudio_state", "__pycache__", "*_cache",
                                   "*.RData", ".Rhistory", "#*#", "%", ".DS_Store"])
+    # build/ and dist/ hold copies of scripts (Python packaging); skipped for scripts only, outputs may live there
+    script_exclude = exclude if "exclude" in cfg else exclude + ["build", "dist"]
     hidden = cfg.get("hidden", False)  # scan hidden folders too
+    out = os.path.realpath(a.out)
     aliases = {k: (v if v.startswith("/") else os.path.normpath(os.path.join(root, v)))
                for k, v in cfg.get("aliases", {}).items()}
     resolve = make_norm(aliases, root)
     rel = lambda p: os.path.relpath(p, root) if p.startswith(root + "/") else p
 
     # 1. scripts: generic engine twice (own variables first, then with variables of source()d/imported scripts)
-    commit, dirty = git_dates(root)
-    scripts = sorted({s for s in walk(cfg.get("scripts", ["."]), exclude, hidden) if s.lower().endswith(exts)})
+    scripts = sorted({s for s in walk(cfg.get("scripts", ["."]), script_exclude, hidden, skip=[out])
+                      if s.lower().endswith(exts)})
+    commit, dirty = git_dates(root, scripts)
     info, code_of = {}, {}
     for s in scripts:
         try: st = os.stat(s)
@@ -438,7 +463,7 @@ def scan(a):
 
     # 2. files (one stat each)
     stat = {}
-    for f in walk(cfg.get("outputs", ["."]), exclude, hidden):
+    for f in walk(cfg.get("outputs", ["."]), exclude, hidden, skip=[out]):
         try: stat[f] = os.stat(f)
         except OSError: pass
     rep = defaultdict(set)  # rendered reports next to their Rmd/qmd/ipynb
@@ -570,7 +595,7 @@ def scan(a):
     unm = Counter(os.path.dirname(rel(f)) or "." for f in outputs if f not in src_of)
     data = {"graph": graph, "rows": rows, "unm": unm, "scripts": [{"p": rel(x), "m": info[x]["modified"]} for x in scripts],
             "unmatched": len(outputs) - len(rows), "root": root,
-            "generated": datetime.datetime.now().isoformat(timespec="minutes")}
+            "generated": datetime.datetime.now().astimezone().isoformat(timespec="minutes")}
     html = open(tpl_path).read().replace("__DATA__", json.dumps(data).replace("</", "<\\/"))
     open(os.path.join(a.out, "index.html"), "w").write(html)
     print(f"{len(rows)}/{len(outputs)} outputs matched; {len(nodes)} nodes, {len(gedges)} edges -> {a.out}/",
