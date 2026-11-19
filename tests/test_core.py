@@ -37,7 +37,7 @@ png(file.path(FIGURES, "plain_device.png"))
     assert ("data/raw/m.csv", "read") in ev
     assert ("figures/plain_device.png", "mention") in ev  # no verb: R fallback upgrades it
     assert not any("commented" in p for p, _ in ev)
-    assert ("figures/roc.png", "write", 'fig.savefig(\n    FIGURES / "roc.png", dpi=150)') in g["ev"]  # code line kept
+    assert ("figures/roc.png", "write", 'fig.savefig( … FIGURES / "roc.png", dpi=150)') in g["ev"]  # code line kept
     assert g["names"] == {"de_table"}                      # only from writing calls, not c(...)
     assert g["uses"] == {"config.py"}
 

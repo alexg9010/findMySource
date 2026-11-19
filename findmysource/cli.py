@@ -20,8 +20,8 @@ paths from command-line args are unknown; only the Network tab needs internet (v
 Config keys (JSON, all optional): scripts, outputs, exclude, aliases, extensions, hidden.
   {"scripts": ["scripts"], "outputs": ["results", "figures"], "aliases": {"/local": "/data/local"}}
 """
-import argparse, bisect, datetime, fnmatch, json, os, re, subprocess, sys
-from collections import defaultdict
+import argparse, bisect, csv, datetime, fnmatch, json, os, re, subprocess, sys
+from collections import Counter, defaultdict
 
 from . import __version__
 
@@ -165,6 +165,12 @@ def direction(fn, args):
     if READ_VERB.search(name): return "read"
     return "mention"
 
+def snippet(st, p):
+    """first line of statement st, plus the line holding most literal pieces of path p's file name"""
+    keys, lines = [k for k in os.path.basename(p).split("*") if len(k) > 2], [" ".join(l.split()) for l in st.split("\n")]
+    hit = max(lines, key=lambda l: sum(k in l for k in keys))  # the line with most pieces of the name (ties: first)
+    return (hit if hit == lines[0] else f"{lines[0][:60]} … {hit}")[:200]
+
 def generic_scan(code, v0=None, stmts=None, vars_only=False):
     """-> dict(ev=[(pattern, write|read|mention, statement)], names={literal}, uses={script name}, vars={}, stmts=[]).
     vars_only: only follow assignments and script references (cheap first pass)."""
@@ -187,7 +193,7 @@ def generic_scan(code, v0=None, stmts=None, vars_only=False):
                     a = NAMED.sub("", a, count=1)
                     p = evaluate(a, v)
                     if FILE_LIKE.search(p) and len(p.replace("*", "")) >= 3 and "://" not in p:
-                        ev.append((p, kind, st[:160]))
+                        ev.append((p, kind, snippet(st, p)))
                     lit = re.fullmatch(r"""\s*["']([\w.\-]{4,})["']\s*""", a)
                     if lit and kind == "write" and not FILE_LIKE.search(lit.group(1)):
                         names.add(lit.group(1))  # save_table(df, "de_table") -> de_table.*
@@ -196,7 +202,7 @@ def generic_scan(code, v0=None, stmts=None, vars_only=False):
             val = evaluate(m.group(2), v)
             v[m.group(1)] = val
             if not vars_only and FILE_LIKE.search(val) and len(val.replace("*", "")) >= 3 and "://" not in val:
-                ev.append((val, "mention", st[:160]))
+                ev.append((val, "mention", snippet(st, val)))
     return {"ev": sorted(set(ev)), "names": names, "uses": uses, "vars": v, "stmts": stmts}
 
 
@@ -384,12 +390,8 @@ STALE_SECONDS = 3600
 RANK = {"write": 0, "stem-rule": 1, "name": 2, "write-glob": 3, "lang-write": 4, "lang-glob": 5,
         "mention": 6, "mention-glob": 7}
 
-def main():
-    ap = argparse.ArgumentParser(prog="fms", description="findMySource: trace outputs back to the scripts that made them.")
-    ap.add_argument("--config", default="fms.json")
-    ap.add_argument("--out", default="fms-report")
-    ap.add_argument("--version", action="version", version=__version__)
-    a = ap.parse_args()
+def scan(a):
+    """Scan the project in the current folder; write manifest.tsv, graph.json, index.html; print a summary."""
     try: cfg = json.load(open(a.config)) if os.path.exists(a.config) else {}
     except ValueError as e: sys.exit(f"bad config {a.config}: {e}")
     tpl_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "view.html")
@@ -476,7 +478,7 @@ def main():
         for p in d["lang"]["writes"]:  # R-specific fallback: only wins where the generic evidence is weaker
             hit, conf = match(p, s)
             key = max(os.path.basename(p).split("*"), key=len)  # find the code line by the pattern's literal part
-            code = next((st[:160] for st in d["stmts"] if key and key in st), "")
+            code = next((snippet(st, p) for st in d["stmts"] if key and key in st), "")
             for f in hit: add(f, s, "lang-write" if conf == "exact" else "lang-glob", code)
         for p in d["lang"]["reads"]:
             for f in match(p, s)[0]: reads_of[s].add(f); edges.add((f, s, "reads"))
@@ -562,13 +564,121 @@ def main():
     graph = {"nodes": nodes, "edges": [{"from": x, "to": y, "kind": k} for x, y, k in sorted(gedges)]}
     json.dump(graph, open(os.path.join(a.out, "graph.json"), "w"))
 
-    data = {"graph": graph, "rows": rows, "scripts": [{"p": rel(x), "m": info[x]["modified"]} for x in scripts],
+    unm = Counter(os.path.dirname(rel(f)) or "." for f in outputs if f not in src_of)
+    data = {"graph": graph, "rows": rows, "unm": unm, "scripts": [{"p": rel(x), "m": info[x]["modified"]} for x in scripts],
             "unmatched": len(outputs) - len(rows), "root": root,
             "generated": datetime.datetime.now().isoformat(timespec="minutes")}
     html = open(tpl_path).read().replace("__DATA__", json.dumps(data).replace("</", "<\\/"))
     open(os.path.join(a.out, "index.html"), "w").write(html)
     print(f"{len(rows)}/{len(outputs)} outputs matched; {len(nodes)} nodes, {len(gedges)} edges -> {a.out}/",
           file=sys.stderr)
+    print(f"\n{len(rows)} of {len(outputs)} outputs traced to a script, {len(stale)} possibly stale"
+          f" (fms <folder> lists them)")
+    top = Counter(s for r in rows for s in r["s"]).most_common(5)
+    if top: print("most outputs:\n" + "\n".join(f"  {n:6}  {s}" for s, n in top))
+    if unm: print("most unmatched (add to outputs/exclude in fms.json?):\n"
+                  + "\n".join(f"  {n:6}  {d}/" for d, n in unm.most_common(5)))
+
+
+def find_root(start, out):
+    """first folder upwards with fms.json or a previous report, else None"""
+    d = os.path.abspath(start)
+    while True:
+        if os.path.exists(os.path.join(d, "fms.json")) or os.path.isdir(os.path.join(d, out)): return d
+        if os.path.dirname(d) == d: return None
+        d = os.path.dirname(d)
+
+
+def query(a):
+    """fms <folder>: possibly stale outputs under it (exit 1 if any); fms <file>: where it came from;
+    fms <script>: what it writes and reads. Reads the last scan; scans first if there is none."""
+    target = os.path.abspath(a.path)
+    # the project we are in; else the one the path is in (never scan a random folder)
+    root = find_root(".", a.out) or find_root(target if os.path.isdir(target) else os.path.dirname(target), a.out)
+    if not root: return f"no fms project here: run fms in the project folder first (no fms.json or {a.out}/ found)"
+    out = os.path.join(root, a.out)
+    if not os.path.exists(os.path.join(out, "manifest.tsv")):
+        print(f"no scan yet in {root}, scanning first", file=sys.stderr)
+        cwd = os.getcwd(); os.chdir(root); scan(a); os.chdir(cwd)
+    with open(os.path.join(out, "manifest.tsv")) as fh:
+        M = {r["output"]: r for r in csv.DictReader(fh, delimiter="\t")}
+    made = os.path.getmtime(os.path.join(out, "manifest.tsv"))
+    scripts = {x for r in M.values() for x in r["sources"].split(";") if x}
+    if any(os.path.exists(os.path.join(root, x)) and os.path.getmtime(os.path.join(root, x)) > made for x in scripts):
+        print(f"(scan from {ts(made)}; scripts changed since, run fms in {root} to refresh)\n")
+    rel = os.path.relpath(target, root)
+    real = os.path.realpath(target)  # outputs reached through a symlink are stored under their real path
+    if rel not in M and real in M: rel = real
+    srcs = lambda r: [x for x in r["sources"].split(";") if x]
+    stale = lambda r: f"  ⚠ possibly stale: script edited {r['stale_days']} days later" if r["stale_days"] else ""
+
+    if rel in M:  # a file
+        r = M[rel]
+        print(f"{rel}\n  modified {r['output_modified']}{stale(r)}")
+        if not srcs(r):
+            print("  no script found that writes it (unmatched)"); return 0
+        for s, ev, sm, code in zip(srcs(r), r["evidence"].split(";"), r["source_modified"].split(";"),
+                                   r.get("evidence_code", "").split(" ;; ") + [""] * 9):
+            print(f"  <- {s}  ({ev}, script last change {sm})" + (f"\n       {code}" if code else ""))
+        print("\nupstream:")
+        def trace(f, ind, seen, depth):
+            r = M.get(f)
+            if f in seen: print(f"{ind}{f}  (see above)"); return
+            seen.add(f)
+            if not r or not srcs(r):
+                print(f"{ind}{f}" + ("  (raw input)" if r else "  (outside the scan)")); return
+            print(f"{ind}{f}  <- {', '.join(srcs(r))}{' ⚠' if r['stale_days'] else ''}")
+            # upstream = inputs that are not code and not written by the same script(s)
+            ins = [i for i in (r["inputs"].split(";") if r["inputs"] else []) if not i.lower().endswith(SCRIPT_EXT)
+                   and not set(srcs(M[i]) if i in M else []) & set(srcs(r))]
+            if depth >= 5 and ins: print(f"{ind}  ..."); return
+            for i in ins[:8]: trace(i, ind + "  ", seen, depth + 1)
+            if len(ins) > 8: print(f"{ind}  + {len(ins) - 8} more inputs")
+        trace(rel, "  ", set(), 0)
+        return 0
+
+    if os.path.isdir(target):  # a folder: what is possibly stale under it
+        pre = () if rel == "." else (rel.rstrip("/") + "/", real + "/")
+        rows = [r for o, r in M.items() if not pre or o.startswith(pre)]
+        bad = [r for r in rows if r["stale_days"]]
+        if not bad:
+            print(f"nothing possibly stale under {rel}/ ({sum(bool(srcs(r)) for r in rows)} of {len(rows)} outputs traced)")
+            return 0
+        print(f"{len(bad)} possibly stale outputs under {rel}/ (script edited after the output was written):")
+        by = defaultdict(list)
+        for r in bad: by[srcs(r)[0]].append(r)
+        for s, rs in sorted(by.items()):
+            print(f"\n{s}  (last change {rs[0]['source_modified'].split(';')[0]})")
+            for r in sorted(rs, key=lambda r: -float(r["stale_days"])):
+                print(f"  {float(r['stale_days']):7.1f} d  {r['output']}")
+        return 1
+
+    if rel in scripts or os.path.exists(target):  # a script (or a file the scan did not see)
+        writes = sorted(o for o, r in M.items() if rel in srcs(r))
+        try:
+            g = json.load(open(os.path.join(out, "graph.json")))
+            title = {n["id"]: n["title"].split("\n")[0] for n in g["nodes"]}
+            me = [i for i, t in title.items() if t == rel]
+            reads = sorted({title[e["from"]] for e in g["edges"] if me and e["to"] == me[0] and e["kind"] != "writes"})
+        except (OSError, ValueError): reads = []
+        if not writes and not reads:
+            print(f"{rel}: not linked to anything by the last scan (excluded, unmatched or new?)"); return 0
+        print(f"{rel}\n  writes {len(writes)}:" + "".join(f"\n    {o}{' ⚠' if M[o]['stale_days'] else ''}" for o in writes))
+        print(f"  reads {len(reads)}:" + "".join(f"\n    {x}" for x in reads))
+        return 0
+    print(f"{a.path}: no such file or folder"); return 2
+
+
+def main():
+    ap = argparse.ArgumentParser(prog="fms", description="findMySource: trace outputs back to the scripts that made them.",
+        epilog="fms: scan and summarise.  fms <folder>: possibly stale outputs in it.  fms <file>: where it came from.")
+    ap.add_argument("path", nargs="?", help="file or folder to ask about (needs a previous scan)")
+    ap.add_argument("--config", default="fms.json")
+    ap.add_argument("--out", default="fms-report")
+    ap.add_argument("--version", action="version", version=__version__)
+    a = ap.parse_args()
+    if a.path: sys.exit(query(a))
+    scan(a)
 
 
 if __name__ == "__main__":
