@@ -96,7 +96,7 @@
       <span class="key"><span class="ln" style="border-color:var(--src);border-top-style:dotted"></span>source()</span></span>
   </div>
   <div class="tools" style="margin-top:-4px">Left → right is execution order. Click a box to trace everything upstream and downstream and see its details; click empty space to reset.</div>
-  <div class="fwrap"><div class="card" id="fcard"><svg id="fsvg"></svg></div><aside id="det" hidden></aside></div>
+  <div class="fwrap"><div class="card" id="fcard"><svg id="fsvg"></svg></div><aside id="det" tabindex="-1" hidden></aside></div>
 </section>
 
 <section id="timeline" class="view">
@@ -330,12 +330,13 @@ function flow() {
   }
   $('fsvg').onclick = ev => { const g = ev.target.closest('.nd'); select(g ? +g.dataset.id : null); };
   function select(id) {  // trace + details panel; the map is re-fitted when the panel opens or closes
-    const was = $('det').hidden, onMap = $('fsvg').contains(document.activeElement);  // search and other tabs keep their focus
+    const was = $('det').hidden, from = document.activeElement, fromMap = $('fsvg').contains(from);  // before the redraw detaches it
     cur = id;
     details(id);
     if ($('det').hidden !== was) draw();
     highlight(id == null ? null : shown(id));
-    if (id != null && onMap) $('fsvg').querySelector(`.nd[data-id="${shown(id)}"]`)?.focus({preventScroll: true});  // the redraw dropped keyboard focus
+    // the redraw (or the tab switch) dropped keyboard focus: back to the box when it came from the map, else to the details; search keeps it
+    if (id != null && from !== $('fq')) (fromMap ? $('fsvg').querySelector(`.nd[data-id="${shown(id)}"]`) : $('det'))?.focus({preventScroll: true});
   }
   // the box that shows a node: its folder group when large folders are grouped
   const shown = id => $('fold').checked && G.nodes[id].grp !== undefined ? G.nodes[id].grp : id;

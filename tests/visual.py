@@ -126,6 +126,11 @@ def main():
                     page.keyboard.press("Enter")
                     if page.evaluate("document.activeElement.tagName") != "TH":
                         problems.append("table: keyboard focus is lost after sorting")
+                    page.focus("#tb tr[data-o] >> nth=0")
+                    page.keyboard.press("Enter")  # opens the row in Flow: focus goes to its details
+                    if page.evaluate("document.activeElement.id") != "det":
+                        problems.append("table: opening a row from the keyboard leaves focus nowhere")
+                    page.click("nav button[data-v=table]")
                     before = page.locator("#tb tr").count()
                     page.select_option("#sf", "stale")
                     after = page.locator("#tb tr").count()
