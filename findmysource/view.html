@@ -335,6 +335,7 @@ function flow() {
     details(id);
     if ($('det').hidden !== was) draw();
     highlight(id == null ? null : shown(id));
+    if (id != null) $('fsvg').querySelector(`.nd[data-id="${shown(id)}"]`)?.focus({preventScroll: true});  // the redraw dropped keyboard focus
   }
   // the box that shows a node: its folder group when large folders are grouped
   const shown = id => $('fold').checked && G.nodes[id].grp !== undefined ? G.nodes[id].grp : id;
@@ -514,8 +515,8 @@ function table() {
                                     && (!q || (script ? r.s.includes(script) : (r.o + ' ' + r.s.join(' ')).toLowerCase().includes(q))))
       .sort((a, b) => val(a, key) < val(b, key) ? -dir : val(a, key) > val(b, key) ? dir : 0);
     $('cnt').textContent = rows.length.toLocaleString() + ' rows' + (rows.length > 2000 ? ' (first 2000 shown)' : '');
-    $('tb').innerHTML = '<tr>' + heads.map(([k, l]) => `<th data-k="${k}" tabindex="0" aria-label="sort by ${esc(l)}">${l}${key === k ? (dir > 0 ? ' ▲' : ' ▼') : ''}</th>`).join('') + '</tr>' +
-      rows.slice(0, 2000).map(r => `<tr data-o="${esc(r.o)}" tabindex="0"><td class="p">${esc(r.o)}</td><td class="p">${r.s.map(esc).join('<br>')}</td>` +
+    $('tb').innerHTML = '<tr>' + heads.map(([k, l]) => `<th data-k="${k}" tabindex="0" aria-sort="${key === k ? (dir > 0 ? 'ascending' : 'descending') : 'none'}">${l}${key === k ? (dir > 0 ? ' ▲' : ' ▼') : ''}</th>`).join('') + '</tr>' +
+      rows.slice(0, 2000).map(r => `<tr data-o="${esc(r.o)}" tabindex="0" title="open in Flow"><td class="p">${esc(r.o)}</td><td class="p">${r.s.map(esc).join('<br>')}</td>` +
         `<td>${r.c.map(chip).join('<br>')}</td>` + (staleBy(r)
           ? `<td class="stale" data-tip="the script was edited ${ago(staleBy(r))} after this file was written: possibly stale">⚠ ${day(r.m)}<br><small>script edited ${ago(staleBy(r))} later</small></td>`
           : `<td>${day(r.m)}</td>`) + `<td>${r.sm.map(day).join('<br>')}</td></tr>`).join('');
@@ -580,6 +581,8 @@ function network() {
     if (st === '(external inputs)') return;
     expanded.has(st) ? expanded.delete(st) : expanded.add(st);
     draw();
+    const nd = [...$('nsvg').querySelectorAll('.nd')];  // keep keyboard focus on the step, or its first script once expanded
+    (nd.find(n => n.dataset.u === u) || nd.find(n => n.dataset.u[0] === 'S' && scriptDir(GN[+n.dataset.u.slice(2)]) === st))?.focus();
   };
   $('nexp').onclick = () => { steps.forEach(st => expanded.add(st)); draw(); };
   $('ncol').onclick = () => { expanded.clear(); draw(); };
