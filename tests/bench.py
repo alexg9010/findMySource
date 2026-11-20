@@ -144,6 +144,13 @@ def show(runs, ref=None):
         if not changed and not gone and not new: print("results identical")
 
 
+def keys(paths, taken=()):
+    """result names for projects: the folder name, or the full path when another project or an example (taken)
+    has the same name; the same names in any argument order"""
+    names = [os.path.basename(os.path.abspath(p)) for p in paths]
+    return [n if names.count(n) == 1 and n not in taken else os.path.abspath(p) for p, n in zip(paths, names)]
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("projects", nargs="*", help="real projects to add (scanned into a temporary report folder)")
@@ -166,10 +173,8 @@ def main():
             root = os.path.join(tmp, "synthetic")
             synthetic(root, a.size)
             runs[f"synthetic-{a.size}"] = bench("synthetic", root, a.repeat)
-    paths = [os.path.abspath(p) for p in a.projects]
-    names = [os.path.basename(p) for p in paths]
-    for p, n in zip(paths, names):  # a name shared with another project or an example: the full path, in any order
-        runs[n if names.count(n) == 1 and n not in runs else p] = bench(p, p, a.repeat)
+    for p, k in zip(a.projects, keys(a.projects, taken=list(runs))):
+        runs[k] = bench(os.path.abspath(p), os.path.abspath(p), a.repeat)
     show(runs)
     if a.save: json.dump(runs, open(a.save, "w"), indent=1)
 
