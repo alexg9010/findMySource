@@ -45,7 +45,7 @@ def main():
         browser = p.chromium.launch(executable_path=os.environ.get("CHROME") or None, args=["--no-sandbox"])
         try:
 
-            def open_tab(tab, dark=False):
+            def open_tab(tab, dark=False, at=None):  # at: another report than the main one
                 page = browser.new_page(viewport={"width": 1500, "height": 950}, color_scheme="dark" if dark else "light")
                 label = tab + ("-dark" if dark else "")
                 page.on("console", lambda m: m.type == "error" and problems.append(f"{label}: console: {m.text}"))
@@ -53,7 +53,7 @@ def main():
                 page.on("requestfailed", lambda r: problems.append(f"{label}: request failed: {r.url} ({r.failure})"))
                 # the report must work offline: any request that leaves the file system fails (and is reported above)
                 page.route("**/*", lambda r: r.continue_() if r.request.url.startswith("file:") else r.abort())
-                page.goto(f"{url}#{tab}", wait_until="load")
+                page.goto(f"{at or url}#{tab}", wait_until="load")
                 return page
 
             def snap(page, name):
@@ -139,6 +139,25 @@ def main():
 
             page = open_tab("flow", dark=True)
             snap(page, "flow-dark")
+            page.close()
+
+            # a script writing >15 files into one folder gets a folder group; expanding a selected group keeps its trace
+            gproj = os.path.join(tempfile.mkdtemp(prefix="fms-group-"), "p")
+            os.makedirs(os.path.join(gproj, "scripts")), os.makedirs(os.path.join(gproj, "out"))
+            with open(os.path.join(gproj, "fms.json"), "w") as f:
+                f.write('{"scripts": ["scripts"], "outputs": ["out"]}')
+            with open(os.path.join(gproj, "scripts", "make.R"), "w") as f:
+                f.write("".join(f'write.csv(x, "out/f{i:02d}.csv")\n' for i in range(16)))
+            for i in range(16):
+                open(os.path.join(gproj, "out", f"f{i:02d}.csv"), "w").close()
+            subprocess.run([sys.executable, "-m", "findmysource", "--out", os.path.join(gproj, "rep")], check=True,
+                           cwd=gproj, env={**os.environ, "PYTHONPATH": REPO}, stdout=subprocess.DEVNULL)
+            page = open_tab("flow", at="file://" + os.path.join(gproj, "rep", "index.html"))
+            page.select_option("#sel", "(all)")
+            page.click("#fsvg .nd:has-text('files)')")
+            page.uncheck("#fold")
+            if not page.locator("#fsvg .ed.hl").count():  # everything here is upstream/downstream, so check highlighted edges, not dimmed boxes
+                problems.append("flow: the trace is lost when a selected folder group is expanded")
             page.close()
 
         except Exception as e:  # report what the page logged before the crash, not only the timeout
