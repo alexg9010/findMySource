@@ -212,7 +212,10 @@ def main():
             page = open_tab("table", at="file://" + os.path.join(gproj, "rep", "index.html"))
             page.select_option("#sf", "stale")  # a filter left on (nothing is stale here) must not hide the group's outputs
             page.click("nav button[data-v=timeline]")
-            page.click("#tsvg [data-s]")  # 16 outputs written at once: one marker that lists them in Table
+            page.focus("#tsvg [data-s]")  # 16 outputs written at once: one marker that lists them in Table
+            page.keyboard.press("Enter")
+            if page.evaluate("document.activeElement.tagName") != "TR":
+                problems.append("timeline: opening a grouped marker from the keyboard leaves focus outside Table")
             if page.locator("#tb tr[data-o]").count() != 16:
                 problems.append("timeline: a grouped marker does not list its outputs in Table")
             page.close()

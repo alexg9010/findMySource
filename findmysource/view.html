@@ -413,7 +413,7 @@ function timeline() {
   $('tsvg').onclick = ev => {
     const c = ev.target.closest('[data-o], [data-s]');
     if (c && c.dataset.o) openPath(c.dataset.o);
-    else if (c) { show('table'); $('q').value = c.dataset.s; $('cf').value = $('sf').value = ''; $('q').oninput(); }  // the script alone decides the rows
+    else if (c) { show('table'); $('q').value = c.dataset.s; $('cf').value = $('sf').value = ''; $('q').oninput(); $('tb').querySelector('tr[data-o]')?.focus(); }  // the script alone decides the rows
   };
   drawTimeline();
 }
