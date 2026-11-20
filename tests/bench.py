@@ -101,12 +101,13 @@ def bench(name, root, repeat, example=False):
     edit = []
     for _ in range(repeat):
         c = json.load(open(os.path.join(out, "cache.json")))
+        if not c["scripts"]: break  # no scripts: nothing to edit
         c.pop("fingerprint", None)
-        if c["scripts"]: c["scripts"].pop(sorted(c["scripts"])[len(c["scripts"]) // 2])  # one script, as if edited
+        c["scripts"].pop(sorted(c["scripts"])[len(c["scripts"]) // 2])  # one script, as if edited
         json.dump(c, open(os.path.join(out, "cache.json"), "w"))
         edit.append(scan(root, out)["s"])
     m = statistics.median
-    res = {"full": m(full), "rerun": m(rerun), "edit": m(edit), "rss": rss,
+    res = {"full": m(full), "rerun": m(rerun), "edit": m(edit) if edit else None, "rss": rss,
            **{k: m(p[k] for p in phases) for k in phases[0]}, **results(out)}
     if example:
         import test_examples
@@ -124,22 +125,23 @@ def show(runs, ref=None):
         cells = []
         for c in cols:
             v, o = r.get(c, ""), (ref or {}).get(name, {}).get(c)
-            txt = f"{v:.3f}" if isinstance(v, float) else str(v)
+            txt = f"{v:.3f}" if isinstance(v, float) else "-" if v is None else str(v)
             if isinstance(v, float) and o: txt += f" {v / o - 1:+.0%}" if abs(v / o - 1) >= 0.005 else " ="
             elif o is not None and v != o: txt += " !"  # a result changed
             cells.append(f"{txt:>{16 if c == 'results' else 13}}")
         print(f"{name[:22]:22}" + "".join(cells))
-    if ref:
+    if ref is not None:
         for name, r in runs.items():
             o = ref.get(name)
             if o and o.get("evidence") != r.get("evidence"):
                 print(f"{name}: evidence {o.get('evidence')} -> {r.get('evidence')}")
         changed = [n for n, r in runs.items() if n in ref and r.get("results") != ref[n].get("results")]
-        missing = sorted(set(runs) ^ set(ref))
+        gone, new = sorted(set(ref) - set(runs)), sorted(set(runs) - set(ref))
         print("times in s (rss in MB), change relative to the first file")
-        if missing: print(f"only in one of the two runs: {', '.join(missing)}")
+        if gone: print(f"only in the first run: {', '.join(gone)}")
+        if new: print(f"only in the second run: {', '.join(new)}")
         if changed: print(f"results changed: {', '.join(changed)}")
-        if not changed and not missing: print("results identical")
+        if not changed and not gone and not new: print("results identical")
 
 
 def main():
@@ -164,10 +166,10 @@ def main():
             root = os.path.join(tmp, "synthetic")
             synthetic(root, a.size)
             runs[f"synthetic-{a.size}"] = bench("synthetic", root, a.repeat)
-    for p in a.projects:
-        p = os.path.abspath(p)
-        name = os.path.basename(p) if os.path.basename(p) not in runs else p  # two projects with one name: full path
-        runs[name] = bench(p, p, a.repeat)
+    paths = [os.path.abspath(p) for p in a.projects]
+    names = [os.path.basename(p) for p in paths]
+    for p, n in zip(paths, names):  # a name shared with another project or an example: the full path, in any order
+        runs[n if names.count(n) == 1 and n not in runs else p] = bench(p, p, a.repeat)
     show(runs)
     if a.save: json.dump(runs, open(a.save, "w"), indent=1)
 
