@@ -53,6 +53,8 @@ def test_builder_examples():
     bad = [f"{e}: expected {want}, got {cli.evaluate(e, v)}" for e, v, want in rules.BUILDER_EXAMPLES
            if cli.evaluate(e, v) != want]
     assert not bad, "\n".join(bad)
+    # format calls are case-sensitive: GLUE() is some other function, and its path stays a mention
+    assert cli.generic_scan('GLUE("out/x.csv")\n')["ev"] == [("out/x.csv", "mention", 'GLUE("out/x.csv")')]
 
 
 def test_configured_write_functions():
