@@ -31,6 +31,8 @@ index.html; the user cache if the project is not writable). README.md describes 
 ```bash
 uvx pytest -q                 # all tests; CI also runs Python 3.8-3.14
 uv run tests/visual.py        # if view.html or graph output changed
+python tests/bench.py --save before.json   # before and after a change to matching or performance;
+python tests/bench.py --compare before.json after.json   # a refactor must report "results identical"
 ```
 
 ## Release

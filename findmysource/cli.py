@@ -529,6 +529,7 @@ def scan(a):
         parsed[s].update(vh=vh, ev=ev, names=names)
     for s in scripts: info[s].update(ev=parsed[s]["ev"], names=parsed[s]["names"])
     print(f"parsed {len(scripts)} scripts ({len(todo)} read, {len(scripts) - len(todo)} from cache) in {took(t0)}", file=sys.stderr)
+    tm = {"parse": time.monotonic() - t0}  # seconds per phase, kept in cache.json for tests/bench.py
 
     # 2. files (one stat each)
     stat = {}
@@ -556,6 +557,7 @@ def scan(a):
     fp = hashlib.sha1(json.dumps([tool, cfg, root, [(s, info[s]["modified"], parsed[s]["key"]) for s in scripts]]).encode())
     for f in sorted(stat): fp.update(f"{f}\0{stat[f].st_mtime_ns}\0{stat[f].st_size}\n".encode())
     fp = fp.hexdigest()
+    tm["files"] = time.monotonic() - t0 - sum(tm.values())
     if fp == old.get("fingerprint") and all(os.path.exists(os.path.join(a.out, x)) for x in ("index.html", "manifest.tsv")):
         try: os.utime(os.path.join(a.out, "manifest.tsv"))  # queries read the newest report: this one, even unchanged
         except OSError: pass  # someone else's report (--out): only a hint for choosing between reports
@@ -614,6 +616,7 @@ def scan(a):
         src_of[f] = {s: l for s, l in src_of[f].items() if RANK[l] == best}
         if not src_of[f]: del src_of[f]
 
+    tm["link"] = time.monotonic() - t0 - sum(tm.values())
     # 4. manifest
     os.makedirs(a.out, exist_ok=True)
     rows, outputs, stale = [], sorted(set(stat) - set(info)), {}
@@ -703,8 +706,9 @@ def scan(a):
     if unm: summary += ("\nmost unmatched (add to outputs/exclude in fms.json?):\n"
                         + "\n".join(f"  {n:6}  {d}/" for d, n in unm.most_common(5)))
     print(summary)
+    tm["write"] = time.monotonic() - t0 - sum(tm.values())
     with open(cache_path, "w") as fh:
-        json.dump({"tool": tool, "fingerprint": fp, "generated": data["generated"], "summary": summary,
+        json.dump({"tool": tool, "fingerprint": fp, "generated": data["generated"], "summary": summary, "timings": tm,
                    "scripts": parsed}, fh)
 
 
