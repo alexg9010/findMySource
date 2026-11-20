@@ -10,7 +10,7 @@
   *{box-sizing:border-box}
   body{margin:0;background:var(--bg);color:var(--ink);font:13px/1.4 system-ui,-apple-system,"Segoe UI",sans-serif}
   header{padding:14px 20px 0;display:flex;flex-wrap:wrap;gap:12px 24px;align-items:flex-end}
-  h1{margin:0;font-size:18px;letter-spacing:.2px}
+  h1{margin:0;font-size:18px;letter-spacing:.2px}h1 a{color:inherit;text-decoration:none}h1 a:hover{text-decoration:underline}
   .sub{color:var(--mute);font-size:12px}
   .stats{display:flex;gap:8px;flex-wrap:wrap;margin-left:auto}
   .stat{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:6px 12px;min-width:90px}
@@ -72,7 +72,7 @@
 </style>
 
 <header>
-  <div><h1>findMySource</h1><div class="sub" id="sub"></div></div>
+  <div><h1><a href="https://github.com/alexg9010/findMySource" target="_blank" rel="noopener" title="findMySource on GitHub">findMySource</a></h1><div class="sub" id="sub"></div></div>
   <div class="stats" id="stats"></div>
 </header>
 <nav>
@@ -166,7 +166,7 @@ function openPath(p) { const id = NODE[p]; if (id !== undefined) { show('flow');
 
 /* header */
 const LOCAL = location.protocol === 'file:';  // 'open' only works where the report was made
-$('sub').textContent = D.root + ' · generated ' + day(D.generated);
+$('sub').textContent = D.root + ' · generated ' + day(D.generated) + (D.version ? ' by fms ' + D.version : '');
 const scriptsUsed = new Set(D.rows.flatMap(r => r.s)).size;
 $('stats').innerHTML = [[D.scripts.length, 'scripts parsed'], [scriptsUsed, 'scripts with outputs'],
   [D.rows.length, 'matched outputs', 'table'], [D.rows.filter(staleBy).length, 'possibly stale', 'stale'],

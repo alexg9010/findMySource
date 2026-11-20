@@ -18,7 +18,7 @@
 ---
 
 <p align="center">
-  <img src="docs/img/flow.png" alt="Flow tab of the report: clicking figures/qc/pca.png highlights its upstream chain from the raw data through 01_load.R, 02_model.Rmd and 03_figures.R; the details panel shows the ggsave() line that wrote it and warns that the script was edited 30 days after the figure, so it is possibly stale">
+  <img src="docs/img/demo.gif" alt="The report for examples/r-project: clicking figures/qc/pca.png highlights its upstream chain and opens the details panel with the ggsave() line that wrote it and a possibly-stale warning; clicking 02_model.Rmd lists what it writes and reads; the Timeline shows the stale figure in red">
   <br><sub>The report for <a href="examples/r-project">examples/r-project</a>: one click on a figure shows the script and line that made it, and that it is out of date.
   <a href="https://alexg9010.github.io/findMySource/example-report/">Open the live example report</a>.</sub>
 </p>
@@ -49,7 +49,12 @@ your scripts and output folders, matches the two up, and writes a report into `.
 - `.fms/graph.json`: the same graph, for your own tooling.
 
 <details>
-<summary><b>More screenshots</b>: Table and Timeline</summary>
+<summary><b>More screenshots</b>: Flow, Table and Timeline</summary>
+
+**Flow**: clicking a figure highlights everything upstream of it; the details panel shows the line of code
+that wrote it and warns that its script changed later.
+
+<img src="docs/img/flow.png" alt="Flow tab of the report: clicking figures/qc/pca.png highlights its upstream chain from the raw data through 01_load.R, 02_model.Rmd and 03_figures.R; the details panel shows the ggsave() line that wrote it and warns that the script was edited 30 days after the figure, so it is possibly stale">
 
 **Table**: every output with its script, the kind of evidence for the match, and its dates.
 The stale figure is flagged in red.
@@ -61,7 +66,7 @@ A red dot left of the tick is an output written before the script was edited.
 
 <img src="docs/img/timeline.png" alt="Timeline tab: three scripts on a date axis; 01_load.R and 02_model.Rmd have green dots after their last change, 03_figures.R has one red dot a month earlier">
 
-<sub>Regenerate with <code>uv run docs/screenshots.py</code>.</sub>
+<sub>Regenerate these, the animation and the live example report with <code>uv run docs/screenshots.py</code>.</sub>
 </details>
 
 `fms` needs no running pipeline, no workflow manager and no changes to your
