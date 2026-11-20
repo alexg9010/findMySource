@@ -259,6 +259,15 @@ pytest                           # or: python tests/test_core.py; python tests/t
 python tests/test_examples.py    # score on the example projects (expected.json = ground truth)
 ```
 
+Benchmark: time per scan and per phase, peak memory, and a fingerprint of the matches, on the examples, a
+synthetic project and any real project you name (scanned into a temporary folder, so it is left untouched):
+```bash
+python tests/bench.py --save before.json [--size 100000] [~/my-project]
+# ... change the code ...
+python tests/bench.py --save after.json [--size 100000] [~/my-project]
+python tests/bench.py --compare before.json after.json   # slower? different matches?
+```
+
 Browser check of the report: it takes screenshots of every tab, tests click-to-trace,
 the details panel, the staleness filter, folder grouping, the Steps and Unmatched tabs, and fails
 on any console error or any network request (the report must work offline).
