@@ -403,7 +403,11 @@ function flow() {
 function timeline() {
   if (!D.rows.length) { $('tsvg').outerHTML = '<div class="empty">no matched outputs</div>'; return; }
   $('tstale').onchange = drawTimeline;
-  $('tsvg').onclick = ev => { const c = ev.target.closest('[data-o]'); if (c) openPath(c.dataset.o); };
+  $('tsvg').onclick = ev => {
+    const c = ev.target.closest('[data-o], [data-s]');
+    if (c && c.dataset.o) openPath(c.dataset.o);
+    else if (c) { show('table'); $('q').value = c.dataset.s; $('cf').value = $('sf').value = ''; $('q').oninput(); }  // the script alone decides the rows
+  };
   drawTimeline();
 }
 function drawTimeline() {
@@ -426,10 +430,28 @@ function drawTimeline() {
          `<text class="lbl" x="${L - 10}" y="${y + 4}" text-anchor="end">${esc(nm.length > 46 ? '…' + nm.slice(-45) : nm)}</text></g>` +
          `<line class="axis" x1="${L}" x2="${L + PW}" y1="${y}" y2="${y}" stroke-dasharray="2 4"/>`;
     if (!isNaN(sm)) o += `<rect x="${x(sm) - 1.5}" y="${y - 8}" width="3" height="16" rx="1" style="fill:var(--ink)"/>`;
-    by[nm].forEach(r => {
-      const gap = staleBy(r), stale = gap > 0;
-      o += `<circle cx="${x(t(r.m))}" cy="${y}" r="4.5" fill="${css(stale ? '--stale' : '--fresh')}" fill-opacity=".7" stroke="${css('--panel')}"` +
-           ` data-o="${esc(r.o)}" data-tip="${esc(r.o)}\nmodified ${r.m}${stale ? `\n⚠ script edited ${ago(gap)} later: possibly stale` : ''}"/>`;
+    // markers closer than their width form a cluster: up to 6 fan out around the cluster's time, more become one marker
+    // a cluster spans half(c) either side of its mean; clusters that would touch are merged
+    const cl = [], mid = c => c.reduce((s, m) => s + m.x, 0) / c.length, half = c => c.length > 6 ? 8 : c.length * 4.5;
+    by[nm].map(r => ({r, x: x(t(r.m))})).sort((a, b) => a.x - b.x).forEach(m => {
+      cl.push([m]);
+      for (let a, b; cl.length > 1 && mid(b = cl[cl.length - 1]) - half(b) < mid(a = cl[cl.length - 2]) + half(a);) cl.splice(-2, 2, a.concat(b));
+    });
+    cl.forEach(c => {
+      const mx = mid(c);
+      if (c.length > 6) {
+        const st = c.filter(m => staleBy(m.r) > 0).length, names = c.map(m => m.r.o);
+        o += `<g data-s="${esc(nm)}" data-tip="${esc(c.length + ' outputs, ' + c[0].r.m.slice(0, 10) + (st ? `, ${st} possibly stale` : '') + '\n' +
+               names.slice(0, 15).join('\n') + (names.length > 15 ? `\n… ${names.length - 15} more` : '') + '\nclick to list them in Table')}">` +
+             `<circle cx="${mx}" cy="${y}" r="8" fill="${css(st ? '--stale' : '--fresh')}" fill-opacity=".7" stroke="${css('--panel')}"/>` +
+             `<text x="${mx}" y="${y + 3.5}" text-anchor="middle" font-size="9.5" style="pointer-events:none">${c.length}</text></g>`;
+        return;
+      }
+      c.forEach(({r}, i) => {
+        const gap = staleBy(r), stale = gap > 0, cx = mx + (i - (c.length - 1) / 2) * 9;  // the tooltip keeps the true time
+        o += `<circle cx="${cx}" cy="${y}" r="4.5" fill="${css(stale ? '--stale' : '--fresh')}" fill-opacity=".7" stroke="${css('--panel')}"` +
+             ` data-o="${esc(r.o)}" data-tip="${esc(r.o)}\nmodified ${r.m}${stale ? `\n⚠ script edited ${ago(gap)} later: possibly stale` : ''}"/>`;
+      });
     });
   });
   $('tsvg').setAttribute('width', L + PW + 30);
@@ -482,8 +504,9 @@ function table() {
   const heads = [['o', 'output'], ['s', 'source script(s)'], ['c', 'evidence'], ['m', 'output modified'], ['sm', 'script last change']];
   function draw() {
     const q = $('q').value.toLowerCase(), cf = $('cf').value, sf = $('sf').value;
+    const script = D.scripts.some(s => s.p === $('q').value) && $('q').value;  // a whole script path (exact case) lists that script's outputs only
     const rows = D.rows.filter(r => (!cf || r.c.includes(cf)) && (!sf || (sf === 'stale') === !!staleBy(r))
-                                    && (!q || (r.o + ' ' + r.s.join(' ')).toLowerCase().includes(q)))
+                                    && (!q || (script ? r.s.includes(script) : (r.o + ' ' + r.s.join(' ')).toLowerCase().includes(q))))
       .sort((a, b) => val(a, key) < val(b, key) ? -dir : val(a, key) > val(b, key) ? dir : 0);
     $('cnt').textContent = rows.length.toLocaleString() + ' rows' + (rows.length > 2000 ? ' (first 2000 shown)' : '');
     $('tb').innerHTML = '<tr>' + heads.map(([k, l]) => `<th data-k="${k}">${l}${key === k ? (dir > 0 ? ' ▲' : ' ▼') : ''}</th>`).join('') + '</tr>' +

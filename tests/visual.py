@@ -102,6 +102,11 @@ def main():
                         if ungrouped < grouped:
                             problems.append("flow: ungrouping folders reduced the number of boxes")
                         snap(page, "flow-ungrouped")
+                if tab == "timeline":  # no two outputs of one script may share a spot, or one of them cannot be clicked
+                    spots = page.eval_on_selector_all("#tsvg circle", "cs => cs.map(c => [+c.getAttribute('cy'), +c.getAttribute('cx'), +c.getAttribute('r')])")
+                    for (y1, x1, r1), (y2, x2, r2) in zip(sorted(spots), sorted(spots)[1:]):
+                        if y1 == y2 and x2 - x1 < r1 + r2 - 0.01:
+                            problems.append(f"timeline: markers overlap at y={y1}")
                 if tab == "table":  # the staleness filter must narrow the table
                     before = page.locator("#tb tr").count()
                     page.select_option("#sf", "stale")
@@ -167,6 +172,9 @@ def main():
                 f.write('{"scripts": ["scripts"], "outputs": ["out"]}')
             with open(os.path.join(gproj, "scripts", "make.R"), "w") as f:
                 f.write("".join(f'write.csv(x, "out/f{i:02d}.csv")\n' for i in range(16)))
+            with open(os.path.join(gproj, "scripts", "make.R.py"), "w") as f:  # its path contains make.R: the group must not list it
+                f.write('open("out/other.csv", "w")\n')
+            open(os.path.join(gproj, "out", "other.csv"), "w").close()
             for i in range(16):
                 open(os.path.join(gproj, "out", f"f{i:02d}.csv"), "w").close()
             subprocess.run([sys.executable, "-m", "findmysource", "--out", os.path.join(gproj, "rep")], check=True,
@@ -177,6 +185,13 @@ def main():
             page.uncheck("#fold")
             if not page.locator("#fsvg .ed.hl").count():  # everything here is upstream/downstream, so check highlighted edges, not dimmed boxes
                 problems.append("flow: the trace is lost when a selected folder group is expanded")
+            page.close()
+            page = open_tab("table", at="file://" + os.path.join(gproj, "rep", "index.html"))
+            page.select_option("#sf", "stale")  # a filter left on (nothing is stale here) must not hide the group's outputs
+            page.click("nav button[data-v=timeline]")
+            page.click("#tsvg [data-s]")  # 16 outputs written at once: one marker that lists them in Table
+            if page.locator("#tb tr[data-o]").count() != 16:
+                problems.append("timeline: a grouped marker does not list its outputs in Table")
             page.close()
 
         except Exception as e:  # report what the page logged before the crash, not only the timeout
