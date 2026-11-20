@@ -301,8 +301,16 @@ def make_norm(aliases, root):
         pre = p.split("*", 1)[0]
         d = pre[:pre.rfind("/")]
         return (os.path.realpath(d) if d else "") + p[len(d):] if p.startswith("/") else p
+    name = "/" + os.path.basename(root) + "/"
+    def moved(p):  # another clone of this project (a colleague's home, an old server path): map it here
+        if p.startswith(root + "/") or os.path.exists(p.split("*", 1)[0].rpartition("/")[0]): return [p]
+        cands, i = [], p.find(name)
+        while i >= 0:  # /c/proj/proj/out/x.pdf: either /proj/ may be the project; the matcher tries each in turn
+            cands.append(root + p[i + len(name) - 1:]); i = p.find(name, i + 1)
+        return cands or [p]
     def resolve(p, script):
-        p = alias(os.path.expanduser(p))
+        p0 = os.path.expanduser(p); p = alias(p0)
+        if p == p0 and p.startswith("/"): return [real(c) for c in moved(p)]  # a configured alias wins
         if p.startswith(("/", "*")): return [real(p)]
         rel = re.sub(r"^(\./)+", "", p)
         cands = [real(alias(os.path.normpath(os.path.join(b, rel)))) for b in (os.path.dirname(script), root)]
@@ -418,7 +426,7 @@ def walk(roots, exclude, hidden=False, skip=()):
 STALE_SECONDS = 3600
 # evidence that a script made a file, strongest first. Only the best kind found for a file is reported.
 RANK = {"write": 0, "stem-rule": 1, "name": 2, "write-glob": 3, "lang-write": 4, "lang-glob": 5,
-        "mention": 6, "mention-glob": 7}
+        "chunk-folder": 6, "mention": 7, "mention-glob": 8}
 
 def _parse1(s):
     """first pass over one script: own variables, script references, statements, R fallback"""
@@ -528,6 +536,14 @@ def scan(a):
                 if os.path.exists(stem + suf):
                     rep[stem + suf].add(s)
                     stat.setdefault(stem + suf, os.stat(stem + suf))
+    nb = defaultdict(set)  # a.Rmd and a.qmd may share a_files/
+    for s in scripts:
+        if s.lower().endswith((".rmd", ".qmd", ".ipynb")): nb[os.path.splitext(s)[0]].add(s)
+    chunk = {}  # chunk figures that knitr/Quarto put in <stem>_files/: the deepest notebook stem wins
+    for f in stat:
+        i = f.rfind("_files/")
+        while i > 0 and f[:i] not in nb: i = f.rfind("_files/", 0, i)
+        if i > 0: chunk[f] = nb[f[:i]]
     # nothing changed since the last scan (scripts, their dates, every file and its timestamp, config)? then the
     # report on disk is still right
     fp = hashlib.sha1(json.dumps([tool, cfg, root, [(s, info[s]["modified"], parsed[s]["key"]) for s in scripts]]).encode())
@@ -579,9 +595,11 @@ def scan(a):
                 if f in info and f != s: edges.add((f, s, "source"))
     for f, ss in rep.items():
         for s in ss: add(f, s, "stem-rule")
+    for f, ss in chunk.items():  # a guess from the folder name: any explicit evidence from another script wins
+        for s in ss: add(f, s, "chunk-folder")
     for s, fs in reads_of.items():  # a script that reads a file is not its source because it also names it
         for f in fs:
-            if src_of[f].get(s, "").startswith(("mention", "name")): del src_of[f][s]
+            if src_of[f].get(s, "").startswith(("mention", "name", "chunk-folder")): del src_of[f][s]
     for f in list(src_of):  # keep only the strongest kind of evidence per output
         best = min((RANK[l] for l in src_of[f].values()), default=None)
         src_of[f] = {s: l for s, l in src_of[f].items() if RANK[l] == best}

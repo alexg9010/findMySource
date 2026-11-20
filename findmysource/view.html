@@ -463,6 +463,7 @@ const EVID = {  // label -> [strength, explanation]; strongest first, mirrors RA
   'write-glob': ['medium', 'the script writes to a path that matches with wildcards (loop or run-time name)'],
   'lang-write': ['medium', 'R fallback: a known R write function (e.g. pdf(), png()) with this exact path'],
   'lang-glob': ['medium', 'R fallback: a known R write function, matched with wildcards'],
+  'chunk-folder': ['medium', 'in the <stem>_files/ folder of a .Rmd/.qmd/.ipynb: a chunk figure of that notebook'],
   'mention': ['weak', 'the path appears in the script, but no read/write call was recognised'],
   'mention-glob': ['weak', 'the path appears with wildcards, but no read/write call was recognised']};
 const chip = c => `<span class="chip ${(EVID[c] || ['weak'])[0]}" data-tip="${esc((EVID[c] || ['', c])[1])}">${esc(c)}</span>`;

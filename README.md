@@ -19,7 +19,8 @@
 
 <p align="center">
   <img src="docs/img/flow.png" alt="Flow tab of the report: clicking figures/qc/pca.png highlights its upstream chain from the raw data through 01_load.R, 02_model.Rmd and 03_figures.R; the details panel shows the ggsave() line that wrote it and warns that the script was edited 30 days after the figure, so it is possibly stale">
-  <br><sub>The report for <a href="examples/r-project">examples/r-project</a>: one click on a figure shows the script and line that made it, and that it is out of date.</sub>
+  <br><sub>The report for <a href="examples/r-project">examples/r-project</a>: one click on a figure shows the script and line that made it, and that it is out of date.
+  Open the generated report: <a href="docs/example-report/index.html">docs/example-report/</a> (download it; GitHub shows HTML as source).</sub>
 </p>
 
 Coming back to an analysis after months away, or preparing a figure for a paper,
@@ -144,7 +145,7 @@ upstream:
 |---|---|---|
 | `scripts` | folders (or single files) to search for scripts | `["."]` |
 | `outputs` | folders to search for output files; symlinks listed here are followed | `["."]` |
-| `aliases` | path prefixes that mean the same place, e.g. a mount visible as both `/local` and `/data/local`. Symlinks are resolved automatically and need no alias. | `{}` |
+| `aliases` | path prefixes that mean the same place, e.g. a mount visible as both `/local` and `/data/local`. Symlinks are resolved automatically and need no alias, and so are paths into another copy of the project: `/home/colleague/myproject/out/x.pdf` counts as `out/x.pdf` when the project folder is also called `myproject` and the colleague's folder does not exist here. A configured alias takes precedence. | `{}` |
 | `exclude` | file and folder name globs to skip | RStudio, cache and editor files; for scripts also `build` and `dist` (packaging copies) |
 | `hidden` | also scan hidden folders (`.git`, `.snakemake`, …). A hidden folder listed in `scripts`/`outputs` is always scanned. | `false` |
 | `extensions` | script types to parse | all types listed under [How it works](#how-it-works) |
@@ -198,6 +199,7 @@ record how an output was made.
    | `name` | passes this file name to a writing function, e.g. `save_table(df, "de_table")` |
    | `write-glob` | writes to a path that matches only through wildcards |
    | `lang-write`, `lang-glob` | language-specific fallback, currently R: known write functions without a write verb in their name, such as `pdf()` and `png()` |
+   | `chunk-folder` | in `analysis_files/` next to `analysis.Rmd` / `.qmd` / `.ipynb`, where knitr and Quarto put chunk figures |
    | `mention`, `mention-glob` | the path appears in the script, but no read or write was recognised |
 
    A script that *reads* a file is never reported as its source.
