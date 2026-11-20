@@ -5,6 +5,7 @@ Usage (run from the project root):
     fms <file>      where it came from (reads the last scan)
     fms <script>    what it writes and reads
     fms <folder>    possibly stale outputs in it (exit code 1 if any)
+    fms --serve [PORT]   rescan, then serve the report on localhost (for a project on a remote machine)
 
 Writes <out>/manifest.tsv, <out>/graph.json and <out>/index.html (tabs: flow, timeline, matrix, table, steps, unmatched).
 
@@ -821,14 +822,32 @@ def query(a):
     print(f"{a.path}: no such file or folder"); return 2
 
 
+def serve(a):
+    """fms --serve [PORT]: refresh the report, then serve it on localhost only; forward the port to view it from
+    another machine (VS Code Remote does that by itself when it sees the URL)"""
+    import functools, http.server
+    os.chdir(find_root(".", a.out) or ".")
+    scan(a)
+    h = functools.partial(http.server.SimpleHTTPRequestHandler, directory=a.out)
+    try: srv = http.server.ThreadingHTTPServer(("127.0.0.1", a.serve), h)
+    except OSError as e: return f"cannot serve on port {a.serve}: {e.strerror} (try fms --serve {a.serve + 1})"
+    print(f"serving {a.out} at http://127.0.0.1:{srv.server_port}/  (Ctrl+C to stop)", file=sys.stderr, flush=True)
+    with srv:
+        try: srv.serve_forever()
+        except KeyboardInterrupt: pass
+
+
 def main():
     ap = argparse.ArgumentParser(prog="fms", description="findMySource: trace outputs back to the scripts that made them.",
         epilog="fms: scan and summarise.  fms <folder>: possibly stale outputs in it.  fms <file>: where it came from.")
     ap.add_argument("path", nargs="?", help="file or folder to ask about (needs a previous scan)")
     ap.add_argument("--config", default="fms.json")
     ap.add_argument("--out", help="report folder (default: .fms/ in the project, or ~/.cache/fms/ if not writable)")
+    ap.add_argument("--serve", nargs="?", const=8000, type=int, metavar="PORT",
+                    help="rescan, then serve the report at http://127.0.0.1:PORT/ (default 8000)")
     ap.add_argument("--version", action="version", version=__version__)
     a = ap.parse_args()
+    if a.serve is not None: sys.exit(serve(a))
     if a.path: sys.exit(query(a))
     scan(a)
 

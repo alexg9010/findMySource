@@ -109,6 +109,15 @@ keeps the report as it is.
   newest report wherever it is.
 - Projects scanned by fms before 0.3 keep their `fms-report/` folder. Delete it to move to `.fms/`.
 
+**Project on a remote machine** (a cluster, a server): `fms --serve` rescans, then serves the report at
+http://127.0.0.1:8000/ (`fms --serve 8001` for another port). It listens on localhost only, not on the network; view it through a forwarded port:
+
+- VS Code Remote-SSH forwards the port by itself when the URL appears in the terminal; click it.
+- Plain SSH: `ssh -L 8000:localhost:8000 cluster`, then open http://localhost:8000 locally.
+- Or skip the server: `index.html` is a single self-contained file that works offline, so you can
+  download it (`scp`, or Download in VS Code) and open it locally, or send it to a colleague. It is a snapshot:
+  it does not change when you rescan.
+
 Afterwards, ask about single files or folders. These read the last scan, so they are instant,
 and they work from any subfolder of the project:
 
