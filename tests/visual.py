@@ -102,6 +102,10 @@ def main():
                         if ungrouped < grouped:
                             problems.append("flow: ungrouping folders reduced the number of boxes")
                         snap(page, "flow-ungrouped")
+                if tab == "timeline":  # no two outputs of one script may share a spot, or one of them cannot be clicked
+                    spots = page.eval_on_selector_all("#tsvg circle[data-o]", "cs => cs.map(c => c.getAttribute('cy') + ',' + c.getAttribute('cx'))")
+                    if len(set(spots)) != len(spots):
+                        problems.append("timeline: outputs overlap")
                 if tab == "table":  # the staleness filter must narrow the table
                     before = page.locator("#tb tr").count()
                     page.select_option("#sf", "stale")

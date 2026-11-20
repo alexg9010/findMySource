@@ -426,9 +426,10 @@ function drawTimeline() {
          `<text class="lbl" x="${L - 10}" y="${y + 4}" text-anchor="end">${esc(nm.length > 46 ? '…' + nm.slice(-45) : nm)}</text></g>` +
          `<line class="axis" x1="${L}" x2="${L + PW}" y1="${y}" y2="${y}" stroke-dasharray="2 4"/>`;
     if (!isNaN(sm)) o += `<rect x="${x(sm) - 1.5}" y="${y - 8}" width="3" height="16" rx="1" style="fill:var(--ink)"/>`;
-    by[nm].forEach(r => {
-      const gap = staleBy(r), stale = gap > 0;
-      o += `<circle cx="${x(t(r.m))}" cy="${y}" r="4.5" fill="${css(stale ? '--stale' : '--fresh')}" fill-opacity=".7" stroke="${css('--panel')}"` +
+    let last = -1e9;  // outputs written at the same moment would sit on top of each other: nudge right, the tooltip keeps the true time
+    by[nm].sort((a, b) => t(a.m) - t(b.m)).forEach(r => {
+      const gap = staleBy(r), stale = gap > 0, cx = last = Math.max(x(t(r.m)), last + 7);
+      o += `<circle cx="${cx}" cy="${y}" r="4.5" fill="${css(stale ? '--stale' : '--fresh')}" fill-opacity=".7" stroke="${css('--panel')}"` +
            ` data-o="${esc(r.o)}" data-tip="${esc(r.o)}\nmodified ${r.m}${stale ? `\n⚠ script edited ${ago(gap)} later: possibly stale` : ''}"/>`;
     });
   });
