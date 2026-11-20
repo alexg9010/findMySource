@@ -108,6 +108,7 @@ def main():
                         if y1 == y2 and x2 - x1 < r1 + r2 - 0.01:
                             problems.append(f"timeline: markers overlap at y={y1}")
                 if tab == "flow":  # keyboard only: Enter on a focused box selects it
+                    page.click("#det .x")  # an earlier click left the panel open
                     page.focus("#fsvg .nd >> nth=0")
                     page.keyboard.press("Enter")
                     if not page.is_visible("#det"):
