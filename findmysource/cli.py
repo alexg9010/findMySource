@@ -9,7 +9,8 @@ Usage (run from the project root):
 
 Writes <out>/manifest.tsv, <out>/graph.json and <out>/index.html (tabs: flow, timeline, matrix, table, steps, unmatched).
 
-Two engines, combined on one evidence scale (see RANK):
+Two engines, combined on one evidence scale (see RANK). The rules themselves, with reasons and examples, are
+in rules.py; this file applies them:
   * generic (default, any language): string literals, f-strings / ${var} / glue / .format,
     path joins recognised by shape (file.path, os.path.join, Path, `/`), assignments, and
     variables inherited from source()d / imported scripts. Read or write is taken from the
@@ -27,17 +28,11 @@ Config keys (JSON, all optional): scripts, outputs, exclude, aliases, extensions
 import argparse, bisect, csv, datetime, fnmatch, hashlib, json, os, re, subprocess, sys, time
 from collections import Counter, defaultdict
 
-from . import __version__
+from . import __version__, rules
+from .rules import RANK, SCRIPT_EXT, STALE_SECONDS
 
-# call name -> index of the positional file argument (named file=/filename=/path= wins)
-WRITE = {n: 1 for n in "saveRDS write_rds write_csv write.csv write.csv2 write.table write_tsv write_delim "
-        "fwrite writeLines write.xlsx saveWidget write_xlsx write_parquet".split()}
-WRITE.update({n: 0 for n in "ggsave pdf png jpeg tiff svg bmp sink save.image".split()})
-WRITE["save"] = None  # file= only
-READ = {n: 0 for n in "readRDS read_rds read_csv read.csv read.csv2 read.table read_tsv read_delim read.delim "
-        "read_excel fread load readLines read_xlsx read_parquet import source".split()}
+WRITE, READ, FILE_KEYS = rules.R_WRITE, rules.R_READ, rules.R_FILE_ARGS
 CALL_RE = re.compile(r"(?<![\w.])(" + "|".join(re.escape(n) for n in {**WRITE, **READ}) + r")\s*\(")
-FILE_KEYS = ("file", "filename", "path", "con")
 TOK_RE = re.compile(r"""\s*((?:[rRbBfFuU]{1,2}(?=["']))?(?:"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')|[A-Za-z_.][\w.$@]*(?:::[A-Za-z_.][\w.$@]*)?|[(),=]|[^\s\w(),="']+|\d+\.?\d*)""")
 
 
@@ -103,13 +98,11 @@ def _args(tok, i, v):
     return args, i + 1
 
 # path builders, recognised by the shape of their name in any language
-JOIN_RE = re.compile(r"(?:^|[.:])(?:file\.path|path|join|joinpath|path_join|here)$", re.I)
-CONCAT_RE = re.compile(r"(?:^|[.:])(?:paste0|str_c|stri_c|concat|stri_paste)$", re.I)
-WRAP_RE = re.compile(r"(?:^|[.:])(?:str|as\.character|normalizePath|path\.expand|expanduser|abspath|realpath|"
-                     r"fspath|resolve|I|toString|Path)$", re.I)
+names_re = lambda ns, flags=re.I: re.compile(r"(?:^|[.:])(?:" + "|".join(map(re.escape, ns)) + r")$", flags)  # pkg::f
+JOIN_RE, CONCAT_RE, WRAP_RE = map(names_re, (rules.JOIN_CALLS, rules.CONCAT_CALLS, rules.WRAP_CALLS))
+FORMAT_RE = names_re(rules.FORMAT_CALLS, flags=0)  # case-sensitive, as these always were
 def is_builder(fn):
-    return bool(JOIN_RE.search(fn) or CONCAT_RE.search(fn) or WRAP_RE.search(fn)
-                or re.search(r"(?:^|[.:])(?:paste|sprintf|glue|str_glue)$", fn))
+    return bool(JOIN_RE.search(fn) or CONCAT_RE.search(fn) or WRAP_RE.search(fn) or FORMAT_RE.search(fn))
 
 def _apply(fn, args, v=None):
     pos = [a for n, a in args if n is None]
@@ -129,14 +122,12 @@ def evaluate(expr, v):
 
 
 # ---------- generic engine (any language) ----------
-WRITE_VERB = re.compile(r"save|write|dump|export|^to_|store|sink|serial", re.I)
-READ_VERB = re.compile(r"read|load|open|source|import|input|scan|include|fetch", re.I)
-WRITE_MODE = re.compile(r"""^\s*(?:mode\s*=\s*)?["'](?:w|wb|wt|w\+|a|ab|a\+|x)["']\s*$""")
-READ_MODE = re.compile(r"""^\s*(?:mode\s*=\s*)?["'](?:r|rb|rt|r\+)["']\s*$""")
+WRITE_VERB, READ_VERB = (re.compile("|".join(vs), re.I) for vs in (rules.WRITE_VERBS, rules.READ_VERBS))
+WRITE_MODE, READ_MODE = (re.compile(r"""^\s*(?:mode\s*=\s*)?["'](?:""" + "|".join(map(re.escape, ms)) + r""")["']\s*$""")
+                         for ms in (rules.WRITE_MODES, rules.READ_MODES))
 CALL_ANY = re.compile(r"([A-Za-z_.][\w.$]*(?:::[A-Za-z_.][\w.$]*)?)\s*\(")
 GEN_ASG = re.compile(r"^\s*(?:export\s+|local\s+)?([A-Za-z_.][\w.$]*)\s*(?:<<-|<-|:=|=(?!=))\s*(.+)$", re.S)
-FILE_LIKE = re.compile(r"\.[A-Za-z][A-Za-z0-9]{0,7}$")
-SCRIPT_EXT = (".r", ".rmd", ".qmd", ".py", ".ipynb", ".sh", ".smk", ".jl", ".nf", ".pl", ".m")
+FILE_LIKE = re.compile(rules.FILE_EXT_RE)
 NAMED = re.compile(r"^\s*[A-Za-z_.][\w.]*\s*=(?!=)\s*")
 
 LEX_RE = re.compile(r""""(?:[^"\\]|\\.)*"?|'(?:[^'\\]|\\.)*'?|#.*|[()\[\]]""")
@@ -422,12 +413,6 @@ def walk(roots, exclude, hidden=False, skip=()):
 
 
 # ---------- main ----------
-# an output is "possibly stale" when its script was edited more than this after it was written
-# (edits within the hour are usually "ran it, then fixed a comment"). Mirrored by STALE_MS in view.html.
-STALE_SECONDS = 3600
-# evidence that a script made a file, strongest first. Only the best kind found for a file is reported.
-RANK = {"write": 0, "stem-rule": 1, "name": 2, "write-glob": 3, "lang-write": 4, "lang-glob": 5,
-        "chunk-folder": 6, "mention": 7, "mention-glob": 8}
 
 def _parse1(s):
     """first pass over one script: own variables, script references, statements, R fallback"""
@@ -464,11 +449,9 @@ def scan(a):
     tpl_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "view.html")
     if not os.path.exists(tpl_path): sys.exit(f"missing template {tpl_path} (broken install?)")
     root = os.path.realpath(".")
-    exts = tuple(e.lower() for e in cfg.get("extensions", list(SCRIPT_EXT) + ["snakefile", "makefile"]))
-    exclude = cfg.get("exclude", ["rstudio-server-db", "rstudio_state", "__pycache__", "*_cache",
-                                  "*.RData", ".Rhistory", "#*#", "%", ".DS_Store"])
-    # build/ and dist/ hold copies of scripts (Python packaging); skipped for scripts only, outputs may live there
-    script_exclude = exclude if "exclude" in cfg else exclude + ["build", "dist"]
+    exts = tuple(e.lower() for e in cfg.get("extensions", list(SCRIPT_EXT + rules.SCRIPT_NAMES)))
+    exclude = cfg.get("exclude", rules.EXCLUDE)
+    script_exclude = exclude if "exclude" in cfg else exclude + rules.SCRIPT_ONLY_EXCLUDE
     hidden = cfg.get("hidden", False)  # scan hidden folders too
     chosen, out = a.out, os.path.realpath(report_dir(root, a.out, write=True))
     a.out = out
@@ -486,7 +469,7 @@ def scan(a):
     # cache in the report folder: the parse of every script (keyed by its mtime and size) and a fingerprint of the
     # whole scan. Thrown away when fms itself changes.
     cache_path = os.path.join(out, "cache.json")
-    tool = [__version__, os.path.getmtime(__file__), os.path.getmtime(tpl_path)]
+    tool = [__version__, os.path.getmtime(__file__), os.path.getmtime(rules.__file__), os.path.getmtime(tpl_path)]
     try:
         old = json.load(open(cache_path))
         if old.get("tool") != tool: old = {}
@@ -538,7 +521,7 @@ def scan(a):
         except OSError: pass
     rep = defaultdict(set)  # rendered reports next to their Rmd/qmd/ipynb
     for s in scripts:
-        if s.lower().endswith((".rmd", ".qmd", ".ipynb")):
+        if s.lower().endswith(rules.NOTEBOOK_EXT):
             stem = os.path.splitext(s)[0]
             for suf in (".html", ".nb.html", ".md", ".pdf", ".docx"):
                 if os.path.exists(stem + suf):
@@ -546,7 +529,7 @@ def scan(a):
                     stat.setdefault(stem + suf, os.stat(stem + suf))
     nb = defaultdict(set)  # a.Rmd and a.qmd may share a_files/
     for s in scripts:
-        if s.lower().endswith((".rmd", ".qmd", ".ipynb")): nb[os.path.splitext(s)[0]].add(s)
+        if s.lower().endswith(rules.NOTEBOOK_EXT): nb[os.path.splitext(s)[0]].add(s)
     chunk = {}  # chunk figures that knitr/Quarto put in <stem>_files/: the deepest notebook stem wins
     for f in stat:
         i = f.rfind("_files/")
@@ -610,7 +593,7 @@ def scan(a):
         for s in ss: add(f, s, "chunk-folder")
     for s, fs in reads_of.items():  # a script that reads a file is not its source because it also names it
         for f in fs:
-            if src_of[f].get(s, "").startswith(("mention", "name", "chunk-folder")): del src_of[f][s]
+            if src_of[f].get(s, "").startswith(rules.DROPPED_FOR_READERS): del src_of[f][s]
     for f in list(src_of):  # keep only the strongest kind of evidence per output
         best = min((RANK[l] for l in src_of[f].values()), default=None)
         src_of[f] = {s: l for s, l in src_of[f].items() if RANK[l] == best}
@@ -693,7 +676,8 @@ def scan(a):
     unm = Counter(rel(f).rpartition("/")[0] or "." for f in outputs if f not in src_of)
     data = {"graph": graph, "rows": rows, "unm": unm, "scripts": [{"p": rel(x), "m": info[x]["modified"]} for x in scripts],
             "unmatched": len(outputs) - len(rows), "root": root,
-            "version": __version__, "generated": datetime.datetime.now().astimezone().isoformat(timespec="minutes")}
+            "evidence": [{k: e[k] for k in ("label", "strength", "meaning")} for e in rules.EVIDENCE],
+            "stale_seconds": STALE_SECONDS, "version": __version__, "generated": datetime.datetime.now().astimezone().isoformat(timespec="minutes")}
     html = open(tpl_path).read().replace("__DATA__", json.dumps(data).replace("</", "<\\/"))
     open(os.path.join(a.out, "index.html"), "w").write(html)
     print(f"{len(rows)}/{len(outputs)} outputs matched; {len(nodes)} nodes, {len(gedges)} edges in {took(t0)}",

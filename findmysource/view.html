@@ -142,7 +142,7 @@ const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(
 const dirOf = p => p.includes('/') ? p.slice(0, p.lastIndexOf('/')) : '.';
 // "possibly stale" = the script was edited more than an hour after the output was written
 // (edits within the hour are usually "ran it, then fixed a comment")
-const STALE_MS = 3600e3;
+const STALE_MS = D.stale_seconds * 1e3;  // rules.STALE_SECONDS
 const ago = ms => ms < 864e5 ? Math.round(ms / 3600e3) + ' h' : ms < 60 * 864e5 ? Math.round(ms / 864e5) + ' days' : Math.round(ms / (30.4 * 864e5)) + ' months';
 const staleBy = r => { const g = Math.max(...r.sm.map(s => new Date(s).getTime())) - new Date(r.m).getTime(); return g > STALE_MS ? g : 0; };
 const day = s => (s || '').replace('T', ' ').slice(0, 19);  // "2026-11-19T12:05:00+01:00" -> "2026-11-19 12:05:00"
@@ -493,16 +493,7 @@ function matrix() {
 }
 
 /* ---------- table ---------- */
-const EVID = {  // label -> [strength, explanation]; strongest first, mirrors RANK in cli.py
-  'write': ['strong', 'the script writes to exactly this path'],
-  'stem-rule': ['strong', 'rendered report next to its .Rmd/.qmd/.ipynb'],
-  'name': ['strong', 'the script passes this file name to a writing function, e.g. save_table(df, "de_table")'],
-  'write-glob': ['medium', 'the script writes to a path that matches with wildcards (loop or run-time name)'],
-  'lang-write': ['medium', 'R fallback: a known R write function (e.g. pdf(), png()) with this exact path'],
-  'lang-glob': ['medium', 'R fallback: a known R write function, matched with wildcards'],
-  'chunk-folder': ['medium', 'in the <stem>_files/ folder of a .Rmd/.qmd/.ipynb: a chunk figure of that notebook'],
-  'mention': ['weak', 'the path appears in the script, but no read/write call was recognised'],
-  'mention-glob': ['weak', 'the path appears with wildcards, but no read/write call was recognised']};
+const EVID = Object.fromEntries(D.evidence.map(e => [e.label, [e.strength, e.meaning.replace(/`/g, '')]]));  // rules.py, strongest first
 const chip = c => `<span class="chip ${(EVID[c] || ['weak'])[0]}" data-tip="${esc((EVID[c] || ['', c])[1])}">${esc(c)}</span>`;
 function table() {
   $('cf').innerHTML = '<option value="">any evidence</option>' + Object.keys(EVID).map(k => `<option>${k}</option>`).join('');
