@@ -626,7 +626,8 @@ def scan(a):
             c = created(st)
             t = ts(c)  # created == modified on Linux (no birth time): format once
             dates = t + "\t" + (t if c == st.st_mtime else ts(st.st_mtime))
-            others = " ;; ".join(f"{rel(s)} {l}: {why_not}" for s, l, why_not in lost.get(f, ()))[:2000]
+            # every script that lost, uncut: at most one entry per script (34 rows, 8 kB in a 30 MB manifest of 108k files)
+            others = " ;; ".join(f"{rel(s)} {l}: {why_not}" for s, l, why_not in lost.get(f, ()))
             if not ss:  # most files: short path
                 m.write(f"{rel(f)}\t\tunmatched\t{dates}\t\t\t\t\t{others}\n"); continue
             # best confidence first; ties -> script whose last change is closest before the output
