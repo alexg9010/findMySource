@@ -761,6 +761,7 @@ def query(a):
     if not os.path.exists(os.path.join(out, "manifest.tsv")):
         print(f"no scan yet in {root}, scanning first", file=sys.stderr)
         cwd = os.getcwd(); os.chdir(root); scan(a); os.chdir(cwd)
+    csv.field_size_limit(2**31 - 1)  # not_chosen is uncut; the default limit is 128 kB (2**31-1: Windows C long)
     with open(os.path.join(out, "manifest.tsv")) as fh:
         M = {r["output"]: r for r in csv.DictReader(fh, delimiter="\t")}
     made = os.path.getmtime(os.path.join(out, "manifest.tsv"))
