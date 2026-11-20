@@ -11,7 +11,7 @@ Per project:
   rerun    nothing changed: the fast path
   edit     one script's cache entry dropped, as if it had been edited (real projects are never touched)
   parse/files/link/write   phases of the full scan, from cache.json
-  rss      peak memory of the full scan in MB, parser processes included
+  rss      peak memory of the full scan in MB: the largest single process (the main one or a parser)
   results  fingerprint of the matches (output, sources, evidence, code line): a refactor must keep it
   correct  outputs that match expected.json (examples only)
 """
@@ -32,8 +32,10 @@ sys.path.insert(0, os.path.join(REPO, "examples"))
 sys.path.insert(0, os.path.join(REPO, "tests"))
 import set_dates  # noqa: E402
 
-# one scan in a fresh interpreter: wall time and peak memory (this process and the parser pool)
+# one scan in a fresh, isolated interpreter (-I: nothing is imported from the scanned project): wall time and the
+# peak memory of the largest single process
 RUN = """import json, resource, sys, time
+sys.path.insert(0, sys.argv[2])
 sys.argv = ["fms", "--out", sys.argv[1]]
 from findmysource import cli
 t = time.perf_counter(); cli.main(); t = time.perf_counter() - t
@@ -43,8 +45,7 @@ print(json.dumps({"s": t, "rss": max(r(resource.RUSAGE_SELF), r(resource.RUSAGE_
 
 
 def scan(root, out):
-    p = subprocess.run([sys.executable, "-c", RUN, out], cwd=root, capture_output=True, text=True,
-                       env={**os.environ, "PYTHONPATH": REPO})
+    p = subprocess.run([sys.executable, "-I", "-c", RUN, out, REPO], cwd=root, capture_output=True, text=True)
     if p.returncode: sys.exit(f"fms failed in {root}:\n{p.stderr}")
     return json.loads(p.stderr.strip().splitlines()[-1])
 
@@ -101,7 +102,7 @@ def bench(name, root, repeat, example=False):
     for _ in range(repeat):
         c = json.load(open(os.path.join(out, "cache.json")))
         c.pop("fingerprint", None)
-        c["scripts"].pop(sorted(c["scripts"])[len(c["scripts"]) // 2], None)  # one script, as if edited
+        if c["scripts"]: c["scripts"].pop(sorted(c["scripts"])[len(c["scripts"]) // 2])  # one script, as if edited
         json.dump(c, open(os.path.join(out, "cache.json"), "w"))
         edit.append(scan(root, out)["s"])
     m = statistics.median
@@ -134,8 +135,11 @@ def show(runs, ref=None):
             if o and o.get("evidence") != r.get("evidence"):
                 print(f"{name}: evidence {o.get('evidence')} -> {r.get('evidence')}")
         changed = [n for n, r in runs.items() if n in ref and r.get("results") != ref[n].get("results")]
+        missing = sorted(set(runs) ^ set(ref))
         print("times in s (rss in MB), change relative to the first file")
-        print(f"results changed: {', '.join(changed)}" if changed else "results identical")
+        if missing: print(f"only in one of the two runs: {', '.join(missing)}")
+        if changed: print(f"results changed: {', '.join(changed)}")
+        if not changed and not missing: print("results identical")
 
 
 def main():
@@ -161,7 +165,9 @@ def main():
             synthetic(root, a.size)
             runs[f"synthetic-{a.size}"] = bench("synthetic", root, a.repeat)
     for p in a.projects:
-        runs[os.path.basename(os.path.abspath(p))] = bench(p, os.path.abspath(p), a.repeat)
+        p = os.path.abspath(p)
+        name = os.path.basename(p) if os.path.basename(p) not in runs else p  # two projects with one name: full path
+        runs[name] = bench(p, p, a.repeat)
     show(runs)
     if a.save: json.dump(runs, open(a.save, "w"), indent=1)
 
