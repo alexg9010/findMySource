@@ -356,7 +356,7 @@ function flow() {
     let h = `<button class="x" data-tip="close">×</button><h3>${esc(n.label)}</h3><div class="p">${esc(p)}</div>`;
     if (n.group !== 'group')
       h += LOCAL ? `<div><a href="${esc(encodeURI('file://' + abs))}" target="_blank">open</a> · <a data-copy="${esc(abs)}">copy path</a></div>`
-                 : `<div><a data-copy="${esc(p)}">copy path</a></div>`;  // hosted copy: the scan root is someone else's disk
+                 : p.startsWith('/') ? '' : `<div><a data-copy="${esc(p)}">copy path</a></div>`;  // hosted copy: the scan root is someone else's disk
     if (n.group === 'script') {
       h += `<div class="p">${esc(n.title.split('\n')[1] || '')}</div>`;
       h += `<div class="sec">writes</div>` + list(from(id, 'writes').filter(i => G.nodes[i].grp === undefined), 'nothing found');
