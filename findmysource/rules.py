@@ -48,6 +48,7 @@ BUILDER_EXAMPLES = [  # (expression, variables, path pattern): "*" is a part onl
     ('sprintf("%s/table_%d.csv", out, i)', {"out": "results"}, "results/table_*.csv"),
     ('"{}/x.csv".format(out)', {"out": "results"}, "results/x.csv"),
 ]
+# format calls are case-sensitive (GLUE() is not glue()); the other builders are not
 # a string is a candidate file path when it ends in an extension of up to 8 characters
 FILE_EXT_RE = r"\.[A-Za-z][A-Za-z0-9]{0,7}$"
 
