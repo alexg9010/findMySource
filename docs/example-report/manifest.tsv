@@ -1,13 +1,13 @@
 output	sources	evidence	output_created	output_modified	source_modified	stale_days	inputs	evidence_code
-data/raw/counts.csv		unmatched	2026-09-19T17:56:35+02:00	2026-09-19T17:56:35+02:00				
-data/raw/samples.xlsx		unmatched	2026-09-19T17:56:35+02:00	2026-09-19T17:56:35+02:00				
-figures/heatmap_GATA4.png	scripts/03_figures.R	lang-glob	2026-11-18T17:56:35+01:00	2026-11-18T17:56:35+01:00	2026-11-18T16:56:35+01:00		results/de_table.tsv;scripts/utils.R	png(file.path(fig_dir, paste0("heatmap_", g, ".png")))
-figures/heatmap_MYH6.png	scripts/03_figures.R	lang-glob	2026-11-18T17:56:35+01:00	2026-11-18T17:56:35+01:00	2026-11-18T16:56:35+01:00		results/de_table.tsv;scripts/utils.R	png(file.path(fig_dir, paste0("heatmap_", g, ".png")))
-figures/heatmap_TNNT2.png	scripts/03_figures.R	lang-glob	2026-11-18T17:56:35+01:00	2026-11-18T17:56:35+01:00	2026-11-18T16:56:35+01:00		results/de_table.tsv;scripts/utils.R	png(file.path(fig_dir, paste0("heatmap_", g, ".png")))
-figures/old_draft.png		unmatched	2026-09-19T17:56:35+02:00	2026-09-19T17:56:35+02:00				
-figures/qc/pca.png	scripts/03_figures.R	write	2026-10-19T17:56:35+02:00	2026-10-19T17:56:35+02:00	2026-11-18T16:56:35+01:00	30.0	results/de_table.tsv;scripts/utils.R	ggsave(file.path(fig_dir, "pca.png"))
-figures/volcano.pdf	scripts/03_figures.R	write	2026-11-18T17:56:35+01:00	2026-11-18T17:56:35+01:00	2026-11-18T16:56:35+01:00		results/de_table.tsv;scripts/utils.R	ggsave(file.path(fig_dir, "volcano.pdf"), p)
-results/clean.rds	scripts/01_load.R	write	2026-11-18T17:56:35+01:00	2026-11-18T17:56:35+01:00	2026-11-18T16:56:35+01:00		data/raw/counts.csv;data/raw/samples.xlsx;scripts/utils.R	saveRDS(clean, file.path(results_dir, "clean.rds"))
-results/de_table.tsv	scripts/02_model.Rmd	name	2026-11-18T17:56:35+01:00	2026-11-18T17:56:35+01:00	2026-11-18T16:56:35+01:00		results/clean.rds;scripts/utils.R	"de_table"
-results/model.rds	scripts/02_model.Rmd	write	2026-11-18T17:56:35+01:00	2026-11-18T17:56:35+01:00	2026-11-18T16:56:35+01:00		results/clean.rds;scripts/utils.R	saveRDS(fit, file.path("..", params$out_dir, "model.rds"))
-scripts/02_model.html	scripts/02_model.Rmd	stem-rule	2026-11-18T17:56:35+01:00	2026-11-18T17:56:35+01:00	2026-11-18T16:56:35+01:00		results/clean.rds;scripts/utils.R	
+data/raw/counts.csv		unmatched	2026-09-19T17:38:27+02:00	2026-09-19T17:38:27+02:00				
+data/raw/samples.xlsx		unmatched	2026-09-19T17:38:27+02:00	2026-09-19T17:38:27+02:00				
+figures/heatmap_GATA4.png	scripts/03_figures.R	lang-glob	2026-11-18T17:38:27+01:00	2026-11-18T17:38:27+01:00	2026-11-18T16:38:27+01:00		results/de_table.tsv;scripts/utils.R	png(file.path(fig_dir, paste0("heatmap_", g, ".png")))
+figures/heatmap_MYH6.png	scripts/03_figures.R	lang-glob	2026-11-18T17:38:27+01:00	2026-11-18T17:38:27+01:00	2026-11-18T16:38:27+01:00		results/de_table.tsv;scripts/utils.R	png(file.path(fig_dir, paste0("heatmap_", g, ".png")))
+figures/heatmap_TNNT2.png	scripts/03_figures.R	lang-glob	2026-11-18T17:38:27+01:00	2026-11-18T17:38:27+01:00	2026-11-18T16:38:27+01:00		results/de_table.tsv;scripts/utils.R	png(file.path(fig_dir, paste0("heatmap_", g, ".png")))
+figures/old_draft.png		unmatched	2026-09-19T17:38:27+02:00	2026-09-19T17:38:27+02:00				
+figures/qc/pca.png	scripts/03_figures.R	write	2026-10-19T17:38:27+02:00	2026-10-19T17:38:27+02:00	2026-11-18T16:38:27+01:00	30.0	results/de_table.tsv;scripts/utils.R	ggsave(file.path(fig_dir, "pca.png"))
+figures/volcano.pdf	scripts/03_figures.R	write	2026-11-18T17:38:27+01:00	2026-11-18T17:38:27+01:00	2026-11-18T16:38:27+01:00		results/de_table.tsv;scripts/utils.R	ggsave(file.path(fig_dir, "volcano.pdf"), p)
+results/clean.rds	scripts/01_load.R	write	2026-11-18T17:38:27+01:00	2026-11-18T17:38:27+01:00	2026-11-18T16:38:27+01:00		data/raw/counts.csv;data/raw/samples.xlsx;scripts/utils.R	saveRDS(clean, file.path(results_dir, "clean.rds"))
+results/de_table.tsv	scripts/02_model.Rmd	name	2026-11-18T17:38:27+01:00	2026-11-18T17:38:27+01:00	2026-11-18T16:38:27+01:00		results/clean.rds;scripts/utils.R	"de_table"
+results/model.rds	scripts/02_model.Rmd	write	2026-11-18T17:38:27+01:00	2026-11-18T17:38:27+01:00	2026-11-18T16:38:27+01:00		results/clean.rds;scripts/utils.R	saveRDS(fit, file.path("..", params$out_dir, "model.rds"))
+scripts/02_model.html	scripts/02_model.Rmd	stem-rule	2026-11-18T17:38:27+01:00	2026-11-18T17:38:27+01:00	2026-11-18T16:38:27+01:00		results/clean.rds;scripts/utils.R	

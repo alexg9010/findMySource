@@ -690,7 +690,7 @@ def scan(a):
     unm = Counter(rel(f).rpartition("/")[0] or "." for f in outputs if f not in src_of)
     data = {"graph": graph, "rows": rows, "unm": unm, "scripts": [{"p": rel(x), "m": info[x]["modified"]} for x in scripts],
             "unmatched": len(outputs) - len(rows), "root": root,
-            "generated": datetime.datetime.now().astimezone().isoformat(timespec="minutes")}
+            "version": __version__, "generated": datetime.datetime.now().astimezone().isoformat(timespec="minutes")}
     html = open(tpl_path).read().replace("__DATA__", json.dumps(data).replace("</", "<\\/"))
     open(os.path.join(a.out, "index.html"), "w").write(html)
     print(f"{len(rows)}/{len(outputs)} outputs matched; {len(nodes)} nodes, {len(gedges)} edges in {took(t0)}",
