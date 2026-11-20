@@ -151,7 +151,20 @@ def test_paths_into_another_clone_and_chunk_figures():
         assert rows["out/plots/pca.pdf"]["evidence"] == "write"
         assert rows["out/aliased/pca.pdf"]["evidence"] == "unmatched"  # the alias wins, even pointing nowhere
         chunk = rows["nb/a_files/figure-gfm/chunk-1.png"]
-        assert chunk["evidence"] == "stem-rule;stem-rule" and sorted(chunk["sources"].split(";")) == ["nb/a.Rmd", "nb/a.qmd"]
+        assert chunk["evidence"] == "chunk-folder;chunk-folder"
+        assert sorted(chunk["sources"].split(";")) == ["nb/a.Rmd", "nb/a.qmd"]
+
+
+def test_chunk_folders_yield_to_reads_and_explicit_writers():
+    with tempfile.TemporaryDirectory() as root:
+        write(f"{root}/nb/a_files/input.rds")
+        write(f"{root}/nb/a.Rmd", '```{r}\nd <- readRDS("a_files/input.rds")\n```\n')  # an input, not an output
+        write(f"{root}/nb/b_files/y.png")
+        write(f"{root}/nb/b.Rmd")
+        write(f"{root}/s.R", 'png("nb/b_files/y.png")\n')  # weak, but explicit: beats the folder-name guess
+        rows = run_fms(root)
+        assert rows["nb/a_files/input.rds"]["evidence"] == "unmatched"
+        assert rows["nb/b_files/y.png"]["sources"] == "s.R"
 
 
 def test_repeated_project_names_and_nested_notebooks():
@@ -218,6 +231,7 @@ if __name__ == "__main__":
     test_report_is_not_scanned_on_a_repeat_run()
     test_build_copies_of_scripts_are_skipped_but_outputs_there_are_kept()
     test_paths_into_another_clone_and_chunk_figures()
+    test_chunk_folders_yield_to_reads_and_explicit_writers()
     test_repeated_project_names_and_nested_notebooks()
     test_git_dates_keep_the_time_zone()
     test_git_dates_ignore_paths_outside_the_repository()

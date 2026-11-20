@@ -19,7 +19,8 @@
 
 <p align="center">
   <img src="docs/img/flow.png" alt="Flow tab of the report: clicking figures/qc/pca.png highlights its upstream chain from the raw data through 01_load.R, 02_model.Rmd and 03_figures.R; the details panel shows the ggsave() line that wrote it and warns that the script was edited 30 days after the figure, so it is possibly stale">
-  <br><sub>The report for <a href="examples/r-project">examples/r-project</a>: one click on a figure shows the script and line that made it, and that it is out of date.</sub>
+  <br><sub>The report for <a href="examples/r-project">examples/r-project</a>: one click on a figure shows the script and line that made it, and that it is out of date.
+  Open the generated report: <a href="docs/example-report/index.html">docs/example-report/</a> (download it; GitHub shows HTML as source).</sub>
 </p>
 
 Coming back to an analysis after months away, or preparing a figure for a paper,
@@ -194,10 +195,11 @@ record how an output was made.
    | evidence | meaning |
    |---|---|
    | `write` | writes to exactly this path |
-   | `stem-rule` | rendered report (`analysis.html`) next to its `analysis.Rmd` / `.qmd` / `.ipynb`, and the chunk figures in `analysis_files/` |
+   | `stem-rule` | rendered report (`analysis.html`) next to its `analysis.Rmd` / `.qmd` / `.ipynb` |
    | `name` | passes this file name to a writing function, e.g. `save_table(df, "de_table")` |
    | `write-glob` | writes to a path that matches only through wildcards |
    | `lang-write`, `lang-glob` | language-specific fallback, currently R: known write functions without a write verb in their name, such as `pdf()` and `png()` |
+   | `chunk-folder` | in `analysis_files/` next to `analysis.Rmd` / `.qmd` / `.ipynb`, where knitr and Quarto put chunk figures |
    | `mention`, `mention-glob` | the path appears in the script, but no read or write was recognised |
 
    A script that *reads* a file is never reported as its source.
