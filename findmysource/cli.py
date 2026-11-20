@@ -437,6 +437,21 @@ def pmap(fn, items):
     except (OSError, ImportError, NotImplementedError):  # e.g. no /dev/shm in some sandboxes
         return [fn(x) for x in items]
 
+def arbitrate(cands, readers):
+    """Choose the sources of one output. cands: {script: evidence label}, the best label per script; readers:
+    scripts that read the output. -> ({script: label} of the winners, [(script, label, reason)] of the others).
+    A reader's weak evidence is dropped (it names the file because it reads it); then the strongest kind of
+    evidence wins, and every script with that kind is a source."""
+    keep, lost = {}, []
+    for s, l in cands.items():
+        if s in readers and l.startswith(rules.DROPPED_FOR_READERS): lost.append((s, l, "reads this file"))
+        else: keep[s] = l
+    best = min((RANK[l] for l in keep.values()), default=None)
+    lost += [(s, l, f"weaker than {next(x for x in keep.values() if RANK[x] == best)}")
+             for s, l in keep.items() if RANK[l] != best]
+    return {s: l for s, l in keep.items() if RANK[l] == best}, sorted(lost, key=lambda x: (RANK[x[1]], x[0]))
+
+
 def took(t0):
     s = time.monotonic() - t0
     return f"{s:.1f} s" if s < 60 else f"{int(s // 60)} min {int(s % 60)} s"
@@ -591,12 +606,12 @@ def scan(a):
         for s in ss: add(f, s, "stem-rule")
     for f, ss in chunk.items():  # a guess from the folder name: any explicit evidence from another script wins
         for s in ss: add(f, s, "chunk-folder")
-    for s, fs in reads_of.items():  # a script that reads a file is not its source because it also names it
-        for f in fs:
-            if src_of[f].get(s, "").startswith(rules.DROPPED_FOR_READERS): del src_of[f][s]
-    for f in list(src_of):  # keep only the strongest kind of evidence per output
-        best = min((RANK[l] for l in src_of[f].values()), default=None)
-        src_of[f] = {s: l for s, l in src_of[f].items() if RANK[l] == best}
+    readers = defaultdict(set)
+    for s, fs in reads_of.items():
+        for f in fs: readers[f].add(s)
+    lost = {}  # output -> scripts with evidence that did not win, and why: shown by fms <file>
+    for f in list(src_of):
+        src_of[f], lost[f] = arbitrate(src_of[f], readers[f])
         if not src_of[f]: del src_of[f]
 
     tm["link"] = time.monotonic() - t0 - sum(tm.values())
@@ -604,14 +619,16 @@ def scan(a):
     os.makedirs(a.out, exist_ok=True)
     rows, outputs, stale = [], sorted(set(stat) - set(info)), {}
     with open(os.path.join(a.out, "manifest.tsv"), "w") as m:
-        m.write("output\tsources\tevidence\toutput_created\toutput_modified\tsource_modified\tstale_days\tinputs\tevidence_code\n")
+        m.write("output\tsources\tevidence\toutput_created\toutput_modified\tsource_modified\tstale_days\tinputs\tevidence_code"
+                "\tnot_chosen\n")
         for f in outputs:
             st, ss = stat[f], src_of.get(f)
             c = created(st)
             t = ts(c)  # created == modified on Linux (no birth time): format once
             dates = t + "\t" + (t if c == st.st_mtime else ts(st.st_mtime))
+            others = " ;; ".join(f"{rel(s)} {l}: {why_not}" for s, l, why_not in lost.get(f, ()))[:2000]
             if not ss:  # most files: short path
-                m.write(f"{rel(f)}\t\tunmatched\t{dates}\t\t\t\t\n"); continue
+                m.write(f"{rel(f)}\t\tunmatched\t{dates}\t\t\t\t\t{others}\n"); continue
             # best confidence first; ties -> script whose last change is closest before the output
             order = sorted(ss, key=lambda s: (info[s]["mtime"] > st.st_mtime, -info[s]["mtime"], s))  # same date: by path
             gap = max((info[s]["mtime"] for s in order), default=0) - st.st_mtime
@@ -621,7 +638,7 @@ def scan(a):
                 dates, ";".join(info[s]["modified"] for s in order),
                 str(stale.get(f, "")),
                 ";".join(sorted({rel(i) for s in order for i in reads_of[s]}))[:2000],
-                " ;; ".join(" ".join(why.get((f, s), "").split()) for s in order)]) + "\n")
+                " ;; ".join(" ".join(why.get((f, s), "").split()) for s in order), others]) + "\n")
             if order: rows.append({"o": rel(f), "s": [rel(x) for x in order], "c": [ss[x] for x in order],
                                    "m": ts(st.st_mtime), "sm": [info[x]["modified"] for x in order],
                                    "x": [why.get((f, x), "") for x in order]})
@@ -756,11 +773,14 @@ def query(a):
     if rel in M:  # a file
         r = M[rel]
         print(f"{rel}\n  modified {r['output_modified']}{stale(r)}")
+        others = [x for x in r.get("not_chosen", "").split(" ;; ") if x]
+        not_chosen = lambda: print("  not chosen:" + "".join(f"\n    {x}" for x in others)) if others else None
         if not srcs(r):
-            print("  no script found that writes it (unmatched)"); return 0
+            print("  no script found that writes it (unmatched)"); not_chosen(); return 0
         for s, ev, sm, code in zip(srcs(r), r["evidence"].split(";"), r["source_modified"].split(";"),
                                    r.get("evidence_code", "").split(" ;; ") + [""] * 9):
             print(f"  <- {s}  ({ev}, script last change {sm})" + (f"\n       {code}" if code else ""))
+        not_chosen()
         print("\nupstream:")
         def trace(f, ind, seen, depth):
             r = M.get(f)

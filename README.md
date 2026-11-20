@@ -30,7 +30,7 @@ your scripts and output folders, matches the two up, and writes a report into `.
 
 - `.fms/manifest.tsv`: one row per output file, with its source script(s),
   match confidence, the line of code behind the match, creation and modification dates,
-  and the inputs of those scripts.
+  the inputs of those scripts, and the scripts that were considered but not chosen, with the reason.
 - `.fms/index.html`: an interactive report you can open in any browser, also offline:
   - **Flow**: a left-to-right map of the pipeline. Click a box to highlight
     everything upstream and downstream of it, and to see its details: the script that
@@ -127,7 +127,8 @@ Afterwards, ask about single files or folders. These read the last scan, so they
 and they work from any subfolder of the project:
 
 ```bash
-fms figures/umap.pdf       # where did it come from: script, code line, dates, upstream chain
+fms figures/umap.pdf       # where did it come from: script, code line, dates, upstream chain,
+                           # and which other scripts were considered and why they lost
 fms scripts/02_model.Rmd   # what does this script write and read
 fms figures                # which outputs in this folder are possibly stale (exit code 1 if any)
 fms .                      # ... in the whole project

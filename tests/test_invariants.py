@@ -6,6 +6,7 @@
 - order: the result does not depend on the order in which folders are listed
 - location: copying the project to another path, under another name, does not change the result
 - traceable: every match names a known evidence kind, and evidence found in code shows the line it came from
+- strongest wins: every script that was not chosen either reads the output or has weaker evidence than the sources
 """
 import argparse
 import csv
@@ -91,6 +92,14 @@ def test_invariants():
                     if ev not in rules.RANK: bad.append(f"{name}: {r['output']}: unknown evidence {ev}")
                     elif ev in FROM_CODE and not code.strip():
                         bad.append(f"{name}: {r['output']}: {ev} without the line of code behind it")
+
+            # strongest wins (not_chosen: "script label: reason")
+            for r in rows(out):
+                best = min((rules.RANK[e] for e in r["evidence"].split(";") if e in rules.RANK), default=99)
+                for x in filter(None, r["not_chosen"].split(" ;; ")):
+                    s, label, why = x.split(" ", 2)[0], x.split(" ", 2)[1].rstrip(":"), x.split(": ", 1)[1]
+                    if why != "reads this file" and rules.RANK[label] <= best:
+                        bad.append(f"{name}: {r['output']}: {s} ({label}) not chosen over {r['evidence']}")
 
             # order
             got = bench.results(scan(root, walk=shuffled))
