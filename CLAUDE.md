@@ -35,7 +35,14 @@ uv run tests/visual.py        # if view.html or graph output changed
 
 ## Release
 
-Bump `__version__` in `findmysource/__init__.py`, commit, then tag and push `vX.Y.Z`.
+Versions before 1.0: bump the minor version (0.x.0) only when users have to act (a breaking change,
+like a moved report folder or a changed manifest column); everything else, new features included,
+is a patch (0.x.y).
+
+A PR with a change users notice adds a line under `## Unreleased` in CHANGELOG.md. To release, rename
+that heading to `## X.Y.Z (date)` and add a new empty `## Unreleased` above it, bump `__version__` in
+`findmysource/__init__.py` and commit on `main`. Then push `main` before the tag, so the branch has the
+release commit too: `git tag -a vX.Y.Z -m vX.Y.Z && git push origin main && git push origin vX.Y.Z`.
 `.github/workflows/release.yml` runs CI, checks the tag matches the version, builds and creates
 the GitHub Release.
 
