@@ -555,7 +555,8 @@ def scan(a):
     fp = hashlib.sha1(json.dumps([tool, cfg, root, [(s, info[s]["modified"], parsed[s]["key"]) for s in scripts]]).encode())
     for f in sorted(stat): fp.update(f"{f}\0{stat[f].st_mtime_ns}\0{stat[f].st_size}\n".encode())
     fp = fp.hexdigest()
-    if fp == old.get("fingerprint") and os.path.exists(os.path.join(a.out, "index.html")):
+    if fp == old.get("fingerprint") and all(os.path.exists(os.path.join(a.out, x)) for x in ("index.html", "manifest.tsv")):
+        os.utime(os.path.join(a.out, "manifest.tsv"))  # queries read the newest report: this scan's, even if unchanged
         print(f"no changes since the last scan ({old.get('generated', '?')}); report is up to date ({took(t0)}): {rel(os.path.join(a.out, 'index.html'))}", file=sys.stderr)
         print(old.get("summary", ""))
         return
@@ -721,7 +722,8 @@ def report_dir(root, out=None, write=False):
     if not write: found.sort(key=lambda d: -os.path.getmtime(os.path.join(d, "manifest.tsv"))
                              if os.path.exists(os.path.join(d, "manifest.tsv")) else 0)
     if found: return found[0]
-    return os.path.join(root, ".fms") if os.access(root, os.W_OK) else cache_dir(root)
+    fms = os.path.join(root, ".fms")  # an existing .fms/ that is not writable: the user cache
+    return fms if not os.path.exists(fms) and os.access(root, os.W_OK) else cache_dir(root)
 
 
 def existing_reports(root):

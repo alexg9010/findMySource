@@ -145,9 +145,14 @@ def test_report_goes_to_a_hidden_folder_or_the_user_cache():
             write(f"{t}/rw/results/other.csv")
             write(f"{t}/rw/make_other.py", 'save_table(data, "results/other.csv")\n')
             assert fms(f"{t}/rw", f"{t}/cache").returncode == 0  # the scan goes to the user cache instead
+            assert any(os.path.exists(f"{t}/cache/fms/{d}/manifest.tsv") for d in os.listdir(f"{t}/cache/fms")
+                       if d.startswith("rw-"))
             assert "make_other.py" in fms(f"{t}/rw", f"{t}/cache", "results/other.csv").stdout  # the newest report
         finally:
             os.chmod(f"{t}/rw/.fms", 0o755)
+        os.remove(f"{t}/rw/results/other.csv"); os.remove(f"{t}/rw/make_other.py")  # back to what .fms/ has
+        assert "no changes" in fms(f"{t}/rw", f"{t}/cache").stderr
+        assert "make_other.py" not in fms(f"{t}/rw", f"{t}/cache", "results/other.csv").stdout  # this scan, not the cache
 
         os.chmod(f"{t}/ro", 0o555)  # e.g. a shared project folder of a colleague
         try:
