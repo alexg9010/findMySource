@@ -30,6 +30,7 @@
   .sw{width:11px;height:11px;border-radius:3px;display:inline-block}
   .ln{width:22px;border-top:2px solid;display:inline-block}
   svg text{fill:var(--ink)}
+  [tabindex="0"]:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
   .nd{cursor:pointer}.nd rect.b{fill:var(--panel);stroke:var(--line)}.nd:hover rect.b{stroke:var(--ink)}
   .nd text{font-size:11.5px;pointer-events:none}
   .ed{fill:none;stroke-width:1.4;opacity:.55}
@@ -95,7 +96,7 @@
       <span class="key"><span class="ln" style="border-color:var(--src);border-top-style:dotted"></span>source()</span></span>
   </div>
   <div class="tools" style="margin-top:-4px">Left → right is execution order. Click a box to trace everything upstream and downstream and see its details; click empty space to reset.</div>
-  <div class="fwrap"><div class="card" id="fcard"><svg id="fsvg"></svg></div><aside id="det" hidden></aside></div>
+  <div class="fwrap"><div class="card" id="fcard"><svg id="fsvg"></svg></div><aside id="det" tabindex="-1" hidden></aside></div>
 </section>
 
 <section id="timeline" class="view">
@@ -136,7 +137,7 @@
 <div id="tip"></div>
 
 <script>
-const D = {"graph": {"nodes": [{"id": 0, "label": "01_load.R", "group": "script", "title": "scripts/01_load.R\nlast change 2026-11-18T16:56:35+01:00"}, {"id": 1, "label": "clean.rds", "group": "file", "title": "results/clean.rds\nmodified 2026-11-18T17:56:35+01:00"}, {"id": 2, "label": "02_model.Rmd", "group": "script", "title": "scripts/02_model.Rmd\nlast change 2026-11-18T16:56:35+01:00"}, {"id": 3, "label": "model.rds", "group": "file", "title": "results/model.rds\nmodified 2026-11-18T17:56:35+01:00"}, {"id": 4, "label": "de_table.tsv", "group": "file", "title": "results/de_table.tsv\nmodified 2026-11-18T17:56:35+01:00"}, {"id": 5, "label": "02_model.html", "group": "file", "title": "scripts/02_model.html\nmodified 2026-11-18T17:56:35+01:00"}, {"id": 6, "label": "03_figures.R", "group": "script", "title": "scripts/03_figures.R\nlast change 2026-11-18T16:56:35+01:00"}, {"id": 7, "label": "heatmap_GATA4.png", "group": "file", "title": "figures/heatmap_GATA4.png\nmodified 2026-11-18T17:56:35+01:00"}, {"id": 8, "label": "heatmap_MYH6.png", "group": "file", "title": "figures/heatmap_MYH6.png\nmodified 2026-11-18T17:56:35+01:00"}, {"id": 9, "label": "heatmap_TNNT2.png", "group": "file", "title": "figures/heatmap_TNNT2.png\nmodified 2026-11-18T17:56:35+01:00"}, {"id": 10, "label": "volcano.pdf", "group": "file", "title": "figures/volcano.pdf\nmodified 2026-11-18T17:56:35+01:00"}, {"id": 11, "label": "pca.png", "group": "file", "title": "figures/qc/pca.png\nmodified 2026-10-19T17:56:35+02:00\n\u26a0 script edited 30 days later: possibly stale", "stale": 30.0}, {"id": 12, "label": "counts.csv", "group": "input", "title": "data/raw/counts.csv\n(not a tracked output)"}, {"id": 13, "label": "samples.xlsx", "group": "input", "title": "data/raw/samples.xlsx\n(not a tracked output)"}, {"id": 14, "label": "utils.R", "group": "script", "title": "scripts/utils.R\nlast change 2026-11-18T16:56:35+01:00"}], "edges": [{"from": 0, "to": 1, "kind": "writes"}, {"from": 1, "to": 2, "kind": "reads"}, {"from": 2, "to": 3, "kind": "writes"}, {"from": 2, "to": 4, "kind": "writes"}, {"from": 2, "to": 5, "kind": "writes"}, {"from": 4, "to": 6, "kind": "reads"}, {"from": 6, "to": 7, "kind": "writes"}, {"from": 6, "to": 8, "kind": "writes"}, {"from": 6, "to": 9, "kind": "writes"}, {"from": 6, "to": 10, "kind": "writes"}, {"from": 6, "to": 11, "kind": "writes"}, {"from": 12, "to": 0, "kind": "reads"}, {"from": 13, "to": 0, "kind": "reads"}, {"from": 14, "to": 0, "kind": "reads"}, {"from": 14, "to": 0, "kind": "source"}, {"from": 14, "to": 2, "kind": "reads"}, {"from": 14, "to": 2, "kind": "source"}, {"from": 14, "to": 6, "kind": "reads"}, {"from": 14, "to": 6, "kind": "source"}]}, "rows": [{"o": "figures/heatmap_GATA4.png", "s": ["scripts/03_figures.R"], "c": ["lang-glob"], "m": "2026-11-18T17:56:35+01:00", "sm": ["2026-11-18T16:56:35+01:00"], "x": ["png(file.path(fig_dir, paste0(\"heatmap_\", g, \".png\")))"]}, {"o": "figures/heatmap_MYH6.png", "s": ["scripts/03_figures.R"], "c": ["lang-glob"], "m": "2026-11-18T17:56:35+01:00", "sm": ["2026-11-18T16:56:35+01:00"], "x": ["png(file.path(fig_dir, paste0(\"heatmap_\", g, \".png\")))"]}, {"o": "figures/heatmap_TNNT2.png", "s": ["scripts/03_figures.R"], "c": ["lang-glob"], "m": "2026-11-18T17:56:35+01:00", "sm": ["2026-11-18T16:56:35+01:00"], "x": ["png(file.path(fig_dir, paste0(\"heatmap_\", g, \".png\")))"]}, {"o": "figures/qc/pca.png", "s": ["scripts/03_figures.R"], "c": ["write"], "m": "2026-10-19T17:56:35+02:00", "sm": ["2026-11-18T16:56:35+01:00"], "x": ["ggsave(file.path(fig_dir, \"pca.png\"))"]}, {"o": "figures/volcano.pdf", "s": ["scripts/03_figures.R"], "c": ["write"], "m": "2026-11-18T17:56:35+01:00", "sm": ["2026-11-18T16:56:35+01:00"], "x": ["ggsave(file.path(fig_dir, \"volcano.pdf\"), p)"]}, {"o": "results/clean.rds", "s": ["scripts/01_load.R"], "c": ["write"], "m": "2026-11-18T17:56:35+01:00", "sm": ["2026-11-18T16:56:35+01:00"], "x": ["saveRDS(clean, file.path(results_dir, \"clean.rds\"))"]}, {"o": "results/de_table.tsv", "s": ["scripts/02_model.Rmd"], "c": ["name"], "m": "2026-11-18T17:56:35+01:00", "sm": ["2026-11-18T16:56:35+01:00"], "x": ["\"de_table\""]}, {"o": "results/model.rds", "s": ["scripts/02_model.Rmd"], "c": ["write"], "m": "2026-11-18T17:56:35+01:00", "sm": ["2026-11-18T16:56:35+01:00"], "x": ["saveRDS(fit, file.path(\"..\", params$out_dir, \"model.rds\"))"]}, {"o": "scripts/02_model.html", "s": ["scripts/02_model.Rmd"], "c": ["stem-rule"], "m": "2026-11-18T17:56:35+01:00", "sm": ["2026-11-18T16:56:35+01:00"], "x": [""]}], "unm": {"data/raw": 2, "figures": 1}, "scripts": [{"p": "scripts/01_load.R", "m": "2026-11-18T16:56:35+01:00"}, {"p": "scripts/02_model.Rmd", "m": "2026-11-18T16:56:35+01:00"}, {"p": "scripts/03_figures.R", "m": "2026-11-18T16:56:35+01:00"}, {"p": "scripts/utils.R", "m": "2026-11-18T16:56:35+01:00"}], "unmatched": 3, "root": "examples/r-project", "generated": "2026-11-20T12:57+01:00"}, G = D.graph, $ = id => document.getElementById(id);
+const D = {"graph": {"nodes": [{"id": 0, "label": "01_load.R", "group": "script", "title": "scripts/01_load.R\nlast change 2026-11-18T16:56:35+01:00"}, {"id": 1, "label": "clean.rds", "group": "file", "title": "results/clean.rds\nmodified 2026-11-18T17:56:35+01:00"}, {"id": 2, "label": "02_model.Rmd", "group": "script", "title": "scripts/02_model.Rmd\nlast change 2026-11-18T16:56:35+01:00"}, {"id": 3, "label": "model.rds", "group": "file", "title": "results/model.rds\nmodified 2026-11-18T17:56:35+01:00"}, {"id": 4, "label": "de_table.tsv", "group": "file", "title": "results/de_table.tsv\nmodified 2026-11-18T17:56:35+01:00"}, {"id": 5, "label": "02_model.html", "group": "file", "title": "scripts/02_model.html\nmodified 2026-11-18T17:56:35+01:00"}, {"id": 6, "label": "03_figures.R", "group": "script", "title": "scripts/03_figures.R\nlast change 2026-11-18T16:56:35+01:00"}, {"id": 7, "label": "heatmap_GATA4.png", "group": "file", "title": "figures/heatmap_GATA4.png\nmodified 2026-11-18T17:56:35+01:00"}, {"id": 8, "label": "heatmap_MYH6.png", "group": "file", "title": "figures/heatmap_MYH6.png\nmodified 2026-11-18T17:56:35+01:00"}, {"id": 9, "label": "heatmap_TNNT2.png", "group": "file", "title": "figures/heatmap_TNNT2.png\nmodified 2026-11-18T17:56:35+01:00"}, {"id": 10, "label": "volcano.pdf", "group": "file", "title": "figures/volcano.pdf\nmodified 2026-11-18T17:56:35+01:00"}, {"id": 11, "label": "pca.png", "group": "file", "title": "figures/qc/pca.png\nmodified 2026-10-19T17:56:35+02:00\n\u26a0 script edited 30 days later: possibly stale", "stale": 30.0}, {"id": 12, "label": "counts.csv", "group": "input", "title": "data/raw/counts.csv\n(not a tracked output)"}, {"id": 13, "label": "samples.xlsx", "group": "input", "title": "data/raw/samples.xlsx\n(not a tracked output)"}, {"id": 14, "label": "utils.R", "group": "script", "title": "scripts/utils.R\nlast change 2026-11-18T16:56:35+01:00"}], "edges": [{"from": 0, "to": 1, "kind": "writes"}, {"from": 1, "to": 2, "kind": "reads"}, {"from": 2, "to": 3, "kind": "writes"}, {"from": 2, "to": 4, "kind": "writes"}, {"from": 2, "to": 5, "kind": "writes"}, {"from": 4, "to": 6, "kind": "reads"}, {"from": 6, "to": 7, "kind": "writes"}, {"from": 6, "to": 8, "kind": "writes"}, {"from": 6, "to": 9, "kind": "writes"}, {"from": 6, "to": 10, "kind": "writes"}, {"from": 6, "to": 11, "kind": "writes"}, {"from": 12, "to": 0, "kind": "reads"}, {"from": 13, "to": 0, "kind": "reads"}, {"from": 14, "to": 0, "kind": "reads"}, {"from": 14, "to": 0, "kind": "source"}, {"from": 14, "to": 2, "kind": "reads"}, {"from": 14, "to": 2, "kind": "source"}, {"from": 14, "to": 6, "kind": "reads"}, {"from": 14, "to": 6, "kind": "source"}]}, "rows": [{"o": "figures/heatmap_GATA4.png", "s": ["scripts/03_figures.R"], "c": ["lang-glob"], "m": "2026-11-18T17:56:35+01:00", "sm": ["2026-11-18T16:56:35+01:00"], "x": ["png(file.path(fig_dir, paste0(\"heatmap_\", g, \".png\")))"]}, {"o": "figures/heatmap_MYH6.png", "s": ["scripts/03_figures.R"], "c": ["lang-glob"], "m": "2026-11-18T17:56:35+01:00", "sm": ["2026-11-18T16:56:35+01:00"], "x": ["png(file.path(fig_dir, paste0(\"heatmap_\", g, \".png\")))"]}, {"o": "figures/heatmap_TNNT2.png", "s": ["scripts/03_figures.R"], "c": ["lang-glob"], "m": "2026-11-18T17:56:35+01:00", "sm": ["2026-11-18T16:56:35+01:00"], "x": ["png(file.path(fig_dir, paste0(\"heatmap_\", g, \".png\")))"]}, {"o": "figures/qc/pca.png", "s": ["scripts/03_figures.R"], "c": ["write"], "m": "2026-10-19T17:56:35+02:00", "sm": ["2026-11-18T16:56:35+01:00"], "x": ["ggsave(file.path(fig_dir, \"pca.png\"))"]}, {"o": "figures/volcano.pdf", "s": ["scripts/03_figures.R"], "c": ["write"], "m": "2026-11-18T17:56:35+01:00", "sm": ["2026-11-18T16:56:35+01:00"], "x": ["ggsave(file.path(fig_dir, \"volcano.pdf\"), p)"]}, {"o": "results/clean.rds", "s": ["scripts/01_load.R"], "c": ["write"], "m": "2026-11-18T17:56:35+01:00", "sm": ["2026-11-18T16:56:35+01:00"], "x": ["saveRDS(clean, file.path(results_dir, \"clean.rds\"))"]}, {"o": "results/de_table.tsv", "s": ["scripts/02_model.Rmd"], "c": ["name"], "m": "2026-11-18T17:56:35+01:00", "sm": ["2026-11-18T16:56:35+01:00"], "x": ["\"de_table\""]}, {"o": "results/model.rds", "s": ["scripts/02_model.Rmd"], "c": ["write"], "m": "2026-11-18T17:56:35+01:00", "sm": ["2026-11-18T16:56:35+01:00"], "x": ["saveRDS(fit, file.path(\"..\", params$out_dir, \"model.rds\"))"]}, {"o": "scripts/02_model.html", "s": ["scripts/02_model.Rmd"], "c": ["stem-rule"], "m": "2026-11-18T17:56:35+01:00", "sm": ["2026-11-18T16:56:35+01:00"], "x": [""]}], "unm": {"data/raw": 2, "figures": 1}, "scripts": [{"p": "scripts/01_load.R", "m": "2026-11-18T16:56:35+01:00"}, {"p": "scripts/02_model.Rmd", "m": "2026-11-18T16:56:35+01:00"}, {"p": "scripts/03_figures.R", "m": "2026-11-18T16:56:35+01:00"}, {"p": "scripts/utils.R", "m": "2026-11-18T16:56:35+01:00"}], "unmatched": 3, "root": "examples/r-project", "generated": "2026-11-20T13:46+01:00"}, G = D.graph, $ = id => document.getElementById(id);
 const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
 const dirOf = p => p.includes('/') ? p.slice(0, p.lastIndexOf('/')) : '.';
 // "possibly stale" = the script was edited more than an hour after the output was written
@@ -164,12 +165,13 @@ const flowStep = id => {  // external inputs live in the step of the first scrip
 function openPath(p) { const id = NODE[p]; if (id !== undefined) { show('flow'); flow.open(flowStep(id), id); } }
 
 /* header */
+const LOCAL = location.protocol === 'file:';  // 'open' only works where the report was made
 $('sub').textContent = D.root + ' · generated ' + day(D.generated);
 const scriptsUsed = new Set(D.rows.flatMap(r => r.s)).size;
 $('stats').innerHTML = [[D.scripts.length, 'scripts parsed'], [scriptsUsed, 'scripts with outputs'],
   [D.rows.length, 'matched outputs', 'table'], [D.rows.filter(staleBy).length, 'possibly stale', 'stale'],
   [D.unmatched, 'unmatched', 'unmatched']]
-  .map(([n, l, go]) => `<div class="stat"${go ? ` data-go="${go}"` : ''}><b>${n.toLocaleString()}</b><span>${l}</span></div>`).join('');
+  .map(([n, l, go]) => `<div class="stat"${go ? ` data-go="${go}" tabindex="0" role="button"` : ''}><b>${n.toLocaleString()}</b><span>${l}</span></div>`).join('');
 $('stats').onclick = ev => {
   const g = ev.target.closest('[data-go]');
   if (!g) return;
@@ -198,6 +200,10 @@ function show(v) {
   history.replaceState(null, '', '#' + v);
 }
 document.querySelectorAll('nav button').forEach(b => b.onclick = () => show(b.dataset.v));
+// everything clickable that is not a native control has tabindex=0: Enter / Space activate it like a click
+document.addEventListener('keydown', ev => {
+  if ((ev.key === 'Enter' || ev.key === ' ') && ev.target.matches('[tabindex="0"]')) { ev.preventDefault(); ev.target.dispatchEvent(new MouseEvent('click', {bubbles: true})); }
+});
 
 /* left-to-right columns: drop back edges (cycles: a script that reads what it writes, steps that read each
    other's outputs), then longest-path layering in topological order. ids: list, edges: [{from, to}] */
@@ -294,7 +300,7 @@ function flow() {
     o += '</g><g id="nodes">';
     N.forEach(n => {
       const p = pos[n.id], c = css(NCOL[n.group]);
-      o += `<g class="nd" data-id="${n.id}" data-tip="${esc(n.title)}"><rect class="b" x="${p.x}" y="${p.y}" width="${W}" height="${H}" rx="6"/>` +
+      o += `<g class="nd" data-id="${n.id}" tabindex="0" role="button" aria-label="${esc(n.label)}" data-tip="${esc(n.title)}"><rect class="b" x="${p.x}" y="${p.y}" width="${W}" height="${H}" rx="6"/>` +
            `<rect x="${p.x}" y="${p.y}" width="5" height="${H}" rx="2" fill="${c}"/>` +
            (n.stale ? `<circle cx="${p.x + W - 10}" cy="${p.y + H / 2}" r="4" fill="${css('--stale')}"/>` : '') +
            `<text x="${p.x + 12}" y="${p.y + 19}"${n.group === 'script' ? ' font-weight="600"' : ''}>${esc(n.label.length > 28 ? n.label.slice(0, 11) + '…' + n.label.slice(-16) : n.label)}</text></g>`;
@@ -324,11 +330,13 @@ function flow() {
   }
   $('fsvg').onclick = ev => { const g = ev.target.closest('.nd'); select(g ? +g.dataset.id : null); };
   function select(id) {  // trace + details panel; the map is re-fitted when the panel opens or closes
-    const was = $('det').hidden;
+    const was = $('det').hidden, from = document.activeElement, fromMap = $('fsvg').contains(from);  // before the redraw detaches it
     cur = id;
     details(id);
     if ($('det').hidden !== was) draw();
     highlight(id == null ? null : shown(id));
+    // the redraw (or the tab switch) dropped keyboard focus: back to the box when it came from the map, else to the details; search keeps it
+    if (id != null && from !== $('fq')) (fromMap ? $('fsvg').querySelector(`.nd[data-id="${shown(id)}"]`) : $('det'))?.focus({preventScroll: fromMap});  // the panel may sit below the map on narrow screens
   }
   // the box that shows a node: its folder group when large folders are grouped
   const shown = id => $('fold').checked && G.nodes[id].grp !== undefined ? G.nodes[id].grp : id;
@@ -347,14 +355,15 @@ function flow() {
     const d = $('det');
     if (id == null) { d.hidden = true; return; }
     const n = G.nodes[id], p = PATH(n), abs = p.startsWith('/') ? p : D.root + '/' + p;
-    const link = i => `<a data-go="${i}" data-tip="${esc(PATH(G.nodes[i]))}">${esc(G.nodes[i].label)}</a>`;
+    const link = i => `<a data-go="${i}" tabindex="0" role="link" data-tip="${esc(PATH(G.nodes[i]))}">${esc(G.nodes[i].label)}</a>`;
     const list = (ids, none, max = 40) => ids.length ? '<ul>' + ids.slice(0, max).map(i => `<li>${link(i)}${G.nodes[i].stale ? ' <span class="warn">⚠</span>' : ''}</li>`).join('') +
       (ids.length > max ? `<li class="p">+ ${ids.length - max} more</li>` : '') + '</ul>' : `<div class="p">${none}</div>`;
     const into = i => [...new Set(G.edges.filter(e => e.to === i && e.kind !== 'writes').map(e => e.from))];
     const from = (i, k) => [...new Set(G.edges.filter(e => e.from === i && (k ? e.kind === k : e.kind !== 'writes')).map(e => e.to))];
     let h = `<button class="x" data-tip="close">×</button><h3>${esc(n.label)}</h3><div class="p">${esc(p)}</div>`;
     if (n.group !== 'group')
-      h += `<div><a href="${esc(encodeURI('file://' + abs))}" target="_blank">open</a> · <a data-copy="${esc(abs)}">copy path</a></div>`;
+      h += LOCAL ? `<div><a href="${esc(encodeURI('file://' + abs))}" target="_blank">open</a> · <a data-copy="${esc(abs)}" tabindex="0" role="button">copy path</a></div>`
+                 : p.startsWith('/') ? '' : `<div><a data-copy="${esc(p)}" tabindex="0" role="button">copy path</a></div>`;  // hosted copy: the scan root is someone else's disk
     if (n.group === 'script') {
       h += `<div class="p">${esc(n.title.split('\n')[1] || '')}</div>`;
       h += `<div class="sec">writes</div>` + list(from(id, 'writes').filter(i => G.nodes[i].grp === undefined), 'nothing found');
@@ -384,7 +393,8 @@ function flow() {
     const a = ev.target.closest('a[data-go], a[data-copy], .x');
     if (!a) return;
     if (a.dataset.go) go(+a.dataset.go);
-    else if (a.dataset.copy) navigator.clipboard?.writeText(a.dataset.copy).then(() => a.textContent = 'copied', () => {});
+    else if (a.dataset.copy) (navigator.clipboard ? navigator.clipboard.writeText(a.dataset.copy) : Promise.reject()).then(() => a.textContent = 'copied',
+      () => { a.textContent = a.dataset.copy; getSelection().selectAllChildren(a); });  // no clipboard (plain http): show the path selected for Ctrl+C
     else select(null);
   };
   $('fq').oninput = () => {
@@ -400,7 +410,11 @@ function flow() {
 function timeline() {
   if (!D.rows.length) { $('tsvg').outerHTML = '<div class="empty">no matched outputs</div>'; return; }
   $('tstale').onchange = drawTimeline;
-  $('tsvg').onclick = ev => { const c = ev.target.closest('[data-o]'); if (c) openPath(c.dataset.o); };
+  $('tsvg').onclick = ev => {
+    const c = ev.target.closest('[data-o], [data-s]');
+    if (c && c.dataset.o) openPath(c.dataset.o);
+    else if (c) { show('table'); $('q').value = c.dataset.s; $('cf').value = $('sf').value = ''; $('q').oninput(); $('tb').querySelector('tr[data-o]')?.focus(); }  // the script alone decides the rows
+  };
   drawTimeline();
 }
 function drawTimeline() {
@@ -423,10 +437,28 @@ function drawTimeline() {
          `<text class="lbl" x="${L - 10}" y="${y + 4}" text-anchor="end">${esc(nm.length > 46 ? '…' + nm.slice(-45) : nm)}</text></g>` +
          `<line class="axis" x1="${L}" x2="${L + PW}" y1="${y}" y2="${y}" stroke-dasharray="2 4"/>`;
     if (!isNaN(sm)) o += `<rect x="${x(sm) - 1.5}" y="${y - 8}" width="3" height="16" rx="1" style="fill:var(--ink)"/>`;
-    by[nm].forEach(r => {
-      const gap = staleBy(r), stale = gap > 0;
-      o += `<circle cx="${x(t(r.m))}" cy="${y}" r="4.5" fill="${css(stale ? '--stale' : '--fresh')}" fill-opacity=".7" stroke="${css('--panel')}"` +
-           ` data-o="${esc(r.o)}" data-tip="${esc(r.o)}\nmodified ${r.m}${stale ? `\n⚠ script edited ${ago(gap)} later: possibly stale` : ''}"/>`;
+    // markers closer than their width form a cluster: up to 6 fan out around the cluster's time, more become one marker
+    // a cluster spans half(c) either side of its mean; clusters that would touch are merged
+    const cl = [], mid = c => c.reduce((s, m) => s + m.x, 0) / c.length, half = c => c.length > 6 ? 8 : c.length * 4.5;
+    by[nm].map(r => ({r, x: x(t(r.m))})).sort((a, b) => a.x - b.x).forEach(m => {
+      cl.push([m]);
+      for (let a, b; cl.length > 1 && mid(b = cl[cl.length - 1]) - half(b) < mid(a = cl[cl.length - 2]) + half(a);) cl.splice(-2, 2, a.concat(b));
+    });
+    cl.forEach(c => {
+      const mx = mid(c);
+      if (c.length > 6) {
+        const st = c.filter(m => staleBy(m.r) > 0).length, names = c.map(m => m.r.o);
+        o += `<g data-s="${esc(nm)}" tabindex="0" role="button" aria-label="${esc(c.length + ' outputs of ' + nm)}" data-tip="${esc(c.length + ' outputs, ' + c[0].r.m.slice(0, 10) + (st ? `, ${st} possibly stale` : '') + '\n' +
+               names.slice(0, 15).join('\n') + (names.length > 15 ? `\n… ${names.length - 15} more` : '') + '\nclick to list them in Table')}">` +
+             `<circle cx="${mx}" cy="${y}" r="8" fill="${css(st ? '--stale' : '--fresh')}" fill-opacity=".7" stroke="${css('--panel')}"/>` +
+             `<text x="${mx}" y="${y + 3.5}" text-anchor="middle" font-size="9.5" style="pointer-events:none">${c.length}</text></g>`;
+        return;
+      }
+      c.forEach(({r}, i) => {
+        const gap = staleBy(r), stale = gap > 0, cx = mx + (i - (c.length - 1) / 2) * 9;  // the tooltip keeps the true time
+        o += `<circle cx="${cx}" cy="${y}" r="4.5" fill="${css(stale ? '--stale' : '--fresh')}" fill-opacity=".7" stroke="${css('--panel')}"` +
+             ` data-o="${esc(r.o)}" tabindex="0" role="button" aria-label="${esc(r.o)}" data-tip="${esc(r.o)}\nmodified ${r.m}${stale ? `\n⚠ script edited ${ago(gap)} later: possibly stale` : ''}"/>`;
+      });
     });
   });
   $('tsvg').setAttribute('width', L + PW + 30);
@@ -479,16 +511,17 @@ function table() {
   const heads = [['o', 'output'], ['s', 'source script(s)'], ['c', 'evidence'], ['m', 'output modified'], ['sm', 'script last change']];
   function draw() {
     const q = $('q').value.toLowerCase(), cf = $('cf').value, sf = $('sf').value;
+    const script = D.scripts.some(s => s.p === $('q').value) && $('q').value;  // a whole script path (exact case) lists that script's outputs only
     const rows = D.rows.filter(r => (!cf || r.c.includes(cf)) && (!sf || (sf === 'stale') === !!staleBy(r))
-                                    && (!q || (r.o + ' ' + r.s.join(' ')).toLowerCase().includes(q)))
+                                    && (!q || (script ? r.s.includes(script) : (r.o + ' ' + r.s.join(' ')).toLowerCase().includes(q))))
       .sort((a, b) => val(a, key) < val(b, key) ? -dir : val(a, key) > val(b, key) ? dir : 0);
     $('cnt').textContent = rows.length.toLocaleString() + ' rows' + (rows.length > 2000 ? ' (first 2000 shown)' : '');
-    $('tb').innerHTML = '<tr>' + heads.map(([k, l]) => `<th data-k="${k}">${l}${key === k ? (dir > 0 ? ' ▲' : ' ▼') : ''}</th>`).join('') + '</tr>' +
-      rows.slice(0, 2000).map(r => `<tr data-o="${esc(r.o)}"><td class="p">${esc(r.o)}</td><td class="p">${r.s.map(esc).join('<br>')}</td>` +
+    $('tb').innerHTML = '<tr>' + heads.map(([k, l]) => `<th data-k="${k}" tabindex="0" aria-sort="${key === k ? (dir > 0 ? 'ascending' : 'descending') : 'none'}">${l}${key === k ? (dir > 0 ? ' ▲' : ' ▼') : ''}</th>`).join('') + '</tr>' +
+      rows.slice(0, 2000).map(r => `<tr data-o="${esc(r.o)}" tabindex="0" title="open in Flow"><td class="p">${esc(r.o)}</td><td class="p">${r.s.map(esc).join('<br>')}</td>` +
         `<td>${r.c.map(chip).join('<br>')}</td>` + (staleBy(r)
           ? `<td class="stale" data-tip="the script was edited ${ago(staleBy(r))} after this file was written: possibly stale">⚠ ${day(r.m)}<br><small>script edited ${ago(staleBy(r))} later</small></td>`
           : `<td>${day(r.m)}</td>`) + `<td>${r.sm.map(day).join('<br>')}</td></tr>`).join('');
-    $('tb').querySelectorAll('th').forEach(th => th.onclick = () => { dir = key === th.dataset.k ? -dir : 1; key = th.dataset.k; draw(); });
+    $('tb').querySelectorAll('th').forEach(th => th.onclick = () => { dir = key === th.dataset.k ? -dir : 1; key = th.dataset.k; draw(); $('tb').querySelector(`th[data-k="${key}"]`).focus(); });
   }
   $('q').oninput = $('cf').onchange = $('sf').onchange = draw;
   $('tb').onclick = ev => { const tr = ev.target.closest('tr[data-o]'); if (tr) openPath(tr.dataset.o); };
@@ -531,7 +564,7 @@ function network() {
       const c = css(input ? '--input' : '--script');
       const tip = isStep ? (input ? 'files read but not written by any script' : `${nm}\nclick to expand into its scripts`)
                          : `${PATH(GN[+x.id.slice(2)])}\nclick to open in Flow`;
-      o += `<g class="nd" data-u="${esc(x.id)}" data-tip="${esc(tip)}"><rect class="b" x="${p.x}" y="${p.y}" width="${BW}" height="${BH}" rx="7"` +
+      o += `<g class="nd" data-u="${esc(x.id)}" tabindex="0" role="button" aria-label="${esc(nm)}" data-tip="${esc(tip)}"><rect class="b" x="${p.x}" y="${p.y}" width="${BW}" height="${BH}" rx="7"` +
            (isStep ? ` style="stroke:${c};stroke-width:1.6"` : '') + `/><rect x="${p.x}" y="${p.y}" width="5" height="${BH}" rx="2" fill="${c}"/>` +
            `<text x="${p.x + 13}" y="${p.y + 19}" font-weight="600" style="font-size:13px">${esc(nm.length > 30 ? '…' + nm.slice(-29) : nm)}</text>` +
            `<text x="${p.x + 13}" y="${p.y + 35}"${x.stale ? ` style="fill:${css('--stale')}"` : ' class="mute"'}>${esc(facts)}</text></g>`;
@@ -549,6 +582,8 @@ function network() {
     if (st === '(external inputs)') return;
     expanded.has(st) ? expanded.delete(st) : expanded.add(st);
     draw();
+    const nd = [...$('nsvg').querySelectorAll('.nd')];  // keep keyboard focus on the step, or its first script once expanded
+    (nd.find(n => n.dataset.u === u) || nd.find(n => n.dataset.u[0] === 'S' && scriptDir(GN[+n.dataset.u.slice(2)]) === st))?.focus();
   };
   $('nexp').onclick = () => { steps.forEach(st => expanded.add(st)); draw(); };
   $('ncol').onclick = () => { expanded.clear(); draw(); };
