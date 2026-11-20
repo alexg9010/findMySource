@@ -107,6 +107,11 @@ def main():
                     for (y1, x1, r1), (y2, x2, r2) in zip(sorted(spots), sorted(spots)[1:]):
                         if y1 == y2 and x2 - x1 < r1 + r2 - 0.01:
                             problems.append(f"timeline: markers overlap at y={y1}")
+                if tab == "flow":  # keyboard only: Enter on a focused box selects it
+                    page.focus("#fsvg .nd >> nth=0")
+                    page.keyboard.press("Enter")
+                    if not page.is_visible("#det"):
+                        problems.append("flow: Enter on a focused box shows no details panel")
                 if tab == "table":  # the staleness filter must narrow the table
                     before = page.locator("#tb tr").count()
                     page.select_option("#sf", "stale")
