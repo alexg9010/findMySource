@@ -104,8 +104,9 @@ A rerun reads only scripts that changed (`.fms/cache.json`), and when nothing ch
 keeps the report as it is.
 
 - `.fms/` holds a `.gitignore` that ignores the folder itself, so the report is never committed.
-- If the project folder is not writable, e.g. a colleague's shared project, the report goes to
-  `~/.cache/fms/<project>-<hash>/` (or `$XDG_CACHE_HOME/fms/...`) instead. Queries find it there too.
+- If the project folder (or its `.fms/`) is not writable, e.g. a colleague's shared project, the report
+  goes to `~/.cache/fms/<project>-<hash>/` (or `$XDG_CACHE_HOME/fms/...`) instead. Queries read the
+  newest report wherever it is.
 - Projects scanned by fms before 0.3 keep their `fms-report/` folder. Delete it to move to `.fms/`.
 
 Afterwards, ask about single files or folders. These read the last scan, so they are instant,

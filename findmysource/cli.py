@@ -469,8 +469,11 @@ def scan(a):
     # build/ and dist/ hold copies of scripts (Python packaging); skipped for scripts only, outputs may live there
     script_exclude = exclude if "exclude" in cfg else exclude + ["build", "dist"]
     hidden = cfg.get("hidden", False)  # scan hidden folders too
-    chosen, out = a.out, os.path.realpath(report_dir(root, a.out))
+    chosen, out = a.out, os.path.realpath(report_dir(root, a.out, write=True))
     a.out = out
+    if out == os.path.join(root, ".fms"):  # ignores itself, so it is never committed; also restored on a rerun
+        os.makedirs(out, exist_ok=True)
+        if not os.path.exists(os.path.join(out, ".gitignore")): open(os.path.join(out, ".gitignore"), "w").write("*\n")
     if not chosen and out == os.path.join(root, "fms-report"):
         print("report in fms-report/ (fms < 0.3); delete it to move the report to .fms/", file=sys.stderr)
     aliases = {k: (v if v.startswith("/") else os.path.normpath(os.path.join(root, v)))
@@ -610,8 +613,6 @@ def scan(a):
 
     # 4. manifest
     os.makedirs(a.out, exist_ok=True)
-    if a.out == os.path.join(root, ".fms") and not os.path.exists(os.path.join(a.out, ".gitignore")):
-        open(os.path.join(a.out, ".gitignore"), "w").write("*\n")  # never committed, no setup needed
     rows, outputs, stale = [], sorted(set(stat) - set(info)), {}
     with open(os.path.join(a.out, "manifest.tsv"), "w") as m:
         m.write("output\tsources\tevidence\toutput_created\toutput_modified\tsource_modified\tstale_days\tinputs\tevidence_code\n")
@@ -711,23 +712,27 @@ def cache_dir(root):
     return os.path.join(base, "fms", os.path.basename(root) + "-" + hashlib.sha1(root.encode()).hexdigest()[:8])
 
 
-def report_dir(root, out=None):
-    """--out if given; else an existing report (.fms/, fms-report/ from before 0.3, the user cache);
-    else .fms/ in the project, or the user cache if the project is not writable"""
+def report_dir(root, out=None, write=False):
+    """--out if given. Else an existing report (.fms/, fms-report/ from before 0.3, the user cache): for a scan
+    the first one it can write to, for a query the newest one. Else .fms/, or the user cache if the project
+    is not writable."""
     if out: return os.path.join(root, out)
-    return existing_report(root) or (os.path.join(root, ".fms") if os.access(root, os.W_OK) else cache_dir(root))
+    found = [d for d in existing_reports(root) if not write or os.access(d, os.W_OK)]
+    if not write: found.sort(key=lambda d: -os.path.getmtime(os.path.join(d, "manifest.tsv"))
+                             if os.path.exists(os.path.join(d, "manifest.tsv")) else 0)
+    if found: return found[0]
+    return os.path.join(root, ".fms") if os.access(root, os.W_OK) else cache_dir(root)
 
 
-def existing_report(root):
-    return next((d for d in (os.path.join(root, ".fms"), os.path.join(root, "fms-report"), cache_dir(root))
-                 if os.path.isdir(d)), None)
+def existing_reports(root):
+    return [d for d in (os.path.join(root, ".fms"), os.path.join(root, "fms-report"), cache_dir(root)) if os.path.isdir(d)]
 
 
 def find_root(start, out):
     """first folder upwards with fms.json or a previous report, else None"""
     d = os.path.abspath(start)
     while True:
-        if os.path.exists(os.path.join(d, "fms.json")) or (os.path.isdir(os.path.join(d, out)) if out else existing_report(d)):
+        if os.path.exists(os.path.join(d, "fms.json")) or (os.path.isdir(os.path.join(d, out)) if out else existing_reports(d)):
             return d
         if os.path.dirname(d) == d: return None
         d = os.path.dirname(d)

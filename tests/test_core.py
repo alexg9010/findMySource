@@ -136,6 +136,18 @@ def test_report_goes_to_a_hidden_folder_or_the_user_cache():
         fms(f"{t}/rw", f"{t}/cache")
         assert open(f"{t}/rw/.fms/.gitignore").read() == "*\n"  # ignores itself: never committed
         assert "make_results.py" in fms(f"{t}/rw/results", f"{t}/cache", "answer.csv").stdout  # found from a subfolder
+        os.remove(f"{t}/rw/.fms/.gitignore")
+        assert "no changes" in fms(f"{t}/rw", f"{t}/cache").stderr
+        assert os.path.exists(f"{t}/rw/.fms/.gitignore")  # restored, also when nothing else changed
+
+        os.chmod(f"{t}/rw/.fms", 0o555)  # a report folder this user cannot write to
+        try:
+            write(f"{t}/rw/results/other.csv")
+            write(f"{t}/rw/make_other.py", 'save_table(data, "results/other.csv")\n')
+            assert fms(f"{t}/rw", f"{t}/cache").returncode == 0  # the scan goes to the user cache instead
+            assert "make_other.py" in fms(f"{t}/rw", f"{t}/cache", "results/other.csv").stdout  # the newest report
+        finally:
+            os.chmod(f"{t}/rw/.fms", 0o755)
 
         os.chmod(f"{t}/ro", 0o555)  # e.g. a shared project folder of a colleague
         try:
