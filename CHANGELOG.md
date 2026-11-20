@@ -7,6 +7,9 @@ a patch bump (0.x.y) covers everything else, new features included.
 
 ## Unreleased
 
+- Report: the title links to the findMySource repository, and the subtitle names the fms version
+  that wrote the report.
+
 ## 0.3.1 (2026-11-20)
 
 - `fms --serve [PORT]`: rescan, then serve the report on localhost, to view the report of a project
