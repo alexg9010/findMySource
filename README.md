@@ -26,12 +26,12 @@
 Coming back to an analysis after months away, or preparing a figure for a paper,
 you often need to answer: *which script produced this file, from which inputs,
 and is it still up to date?* `findMySource` (`fms` on the command line) scans
-your scripts and output folders, matches the two up, and writes:
+your scripts and output folders, matches the two up, and writes a report into `.fms/` in the project:
 
-- `fms-report/manifest.tsv`: one row per output file, with its source script(s),
+- `.fms/manifest.tsv`: one row per output file, with its source script(s),
   match confidence, the line of code behind the match, creation and modification dates,
   and the inputs of those scripts.
-- `fms-report/index.html`: an interactive report you can open in any browser, also offline:
+- `.fms/index.html`: an interactive report you can open in any browser, also offline:
   - **Flow**: a left-to-right map of the pipeline. Click a box to highlight
     everything upstream and downstream of it, and to see its details: the script that
     wrote it, the line of code that links the two, dates, and inputs. Folders with many
@@ -46,7 +46,7 @@ your scripts and output folders, matches the two up, and writes:
     and click a script to open it in Flow.
   - **Unmatched**: a folder tree of the output files no script could be linked to,
     which shows what to add to `exclude` in `fms.json`.
-- `fms-report/graph.json`: the same graph, for your own tooling.
+- `.fms/graph.json`: the same graph, for your own tooling.
 
 <details>
 <summary><b>More screenshots</b>: Table and Timeline</summary>
@@ -96,12 +96,17 @@ Run it from the root of the project you want to map:
 
 ```bash
 fms                        # scan: uses ./fms.json if present, else scans the current folder
-fms --config fms.json --out fms-report
+fms --config fms.json --out my-report   # another report folder
 ```
 
-This prints a short summary and writes the report. A rerun reads only scripts that changed
-(`fms-report/cache.json`), and when nothing changed at all it keeps the report as it is. Open `fms-report/index.html`, and
-add `fms-report/` to your `.gitignore`.
+This prints a short summary and the path of the report; open `.fms/index.html` in a browser.
+A rerun reads only scripts that changed (`.fms/cache.json`), and when nothing changed at all it
+keeps the report as it is.
+
+- `.fms/` holds a `.gitignore` that ignores the folder itself, so the report is never committed.
+- If the project folder is not writable, e.g. a colleague's shared project, the report goes to
+  `~/.cache/fms/<project>-<hash>/` (or `$XDG_CACHE_HOME/fms/...`) instead. Queries find it there too.
+- Projects scanned by fms before 0.3 keep their `fms-report/` folder. Delete it to move to `.fms/`.
 
 Afterwards, ask about single files or folders. These read the last scan, so they are instant,
 and they work from any subfolder of the project:
@@ -246,7 +251,7 @@ on any console error or any network request (the report must work offline).
 ```bash
 uvx playwright@1.64.1 install chromium     # once (add --with-deps on Debian/Ubuntu)
 uv run tests/visual.py                     # example project -> tests/screenshots/
-uv run tests/visual.py path/to/fms-report/index.html   # any report
+uv run tests/visual.py path/to/.fms/index.html   # any report
 CHROME=$(command -v chromium) uv run tests/visual.py   # or use an installed Chromium
 ```
 
