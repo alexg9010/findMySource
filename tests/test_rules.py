@@ -55,6 +55,17 @@ def test_builder_examples():
     assert not bad, "\n".join(bad)
 
 
+def test_configured_write_functions():
+    """fms.json write_functions: the project's own helpers, by argument name or position; a folder covers its files"""
+    got = links({"fms.json": '{"write_functions": {"convert_all": "out_dir", "keep_fig": 1}}',
+                 "a.R": 'out <- "plots"\nconvert_all(in_dir = out, out_dir = file.path(out, "converted"), cl = 1)\n'
+                        'keep_fig(p, "figs/umap.pdf")\n',
+                 "plots/converted/x.png": "", "plots/converted/y.png": "", "plots/other.png": "", "figs/umap.pdf": ""})
+    got.pop("fms.json")
+    assert got == {"plots/converted/x.png": "a.R write-glob", "plots/converted/y.png": "a.R write-glob",
+                   "plots/other.png": "", "figs/umap.pdf": "a.R write"}, got
+
+
 def table():
     return "   | evidence | meaning |\n   |---|---|\n" + "".join(
         f"   | `{e['label']}` | {e['meaning']} |\n" for e in rules.EVIDENCE)

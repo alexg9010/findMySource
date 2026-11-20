@@ -22,7 +22,7 @@ Relative paths are tried against the script's folder and the project root; symli
 resolved automatically, so aliases are only needed for mount points with two spellings.
 Ceilings: names computed at run time -> wildcard matches; variables inherited one level deep;
 paths from command-line args are unknown; only the Network tab needs internet (vis-network).
-Config keys (JSON, all optional): scripts, outputs, exclude, aliases, extensions, hidden.
+Config keys (JSON, all optional): scripts, outputs, exclude, aliases, extensions, hidden, write_functions.
   {"scripts": ["scripts"], "outputs": ["results", "figures"], "aliases": {"/local": "/data/local"}}
 """
 import argparse, bisect, csv, datetime, fnmatch, hashlib, json, os, re, subprocess, sys, time
@@ -166,9 +166,12 @@ def snippet(st, p):
     hit = max(lines, key=lambda l: sum(k in l for k in keys))  # the line with most pieces of the name (ties: first)
     return (hit if hit == lines[0] else f"{lines[0][:60]} … {hit}")[:200]
 
-def generic_scan(code, v0=None, stmts=None, vars_only=False):
+def generic_scan(code, v0=None, stmts=None, vars_only=False, writers=None):
     """-> dict(ev=[(pattern, write|read|mention, statement)], names={literal}, uses={script name}, vars={}, stmts=[]).
-    vars_only: only follow assignments and script references (cheap first pass)."""
+    vars_only: only follow assignments and script references (cheap first pass).
+    writers: the project's own write functions from fms.json, {name: argument name or position of the path};
+    a folder there means every file in it."""
+    writers = writers or {}
     v = dict(v0 or {})
     ev, names, uses = [], set(), set()
     stmts = statements(code) if stmts is None else stmts
@@ -183,6 +186,13 @@ def generic_scan(code, v0=None, stmts=None, vars_only=False):
                 fn = cm.group(1)
                 if is_builder(fn): continue  # evaluated as part of the enclosing argument
                 args, _ = split_call(st, cm.end())
+                w = writers.get(fn.rsplit("::", 1)[-1])
+                if w is not None:
+                    a = file_arg(args, w) if isinstance(w, int) else next(
+                        (NAMED.sub("", x, count=1) for x in args if re.match(rf"\s*{re.escape(w)}\s*=(?!=)", x)), None)
+                    p = evaluate(a, v) if a else "*"
+                    if len(p.replace("*", "")) >= 3 and "://" not in p:
+                        ev.append((p if FILE_LIKE.search(p) else p.rstrip("/") + "/*", "write", snippet(st, p)))
                 kind = direction(fn, args)
                 for a in args:
                     a = NAMED.sub("", a, count=1)
@@ -423,8 +433,8 @@ def _parse1(s):
 
 def _parse2(job):
     """second pass: evidence, with the variables inherited from source()d / imported scripts"""
-    s, v0, stmts = job
-    g = generic_scan(read_code(s)[0], v0, stmts=stmts)
+    s, v0, stmts, writers = job
+    g = generic_scan(read_code(s)[0], v0, stmts=stmts, writers=writers)
     return [list(e) for e in g["ev"]], sorted(g["names"])
 
 def pmap(fn, items):
@@ -468,6 +478,7 @@ def scan(a):
     exclude = cfg.get("exclude", rules.EXCLUDE)
     script_exclude = exclude if "exclude" in cfg else exclude + rules.SCRIPT_ONLY_EXCLUDE
     hidden = cfg.get("hidden", False)  # scan hidden folders too
+    writers = cfg.get("write_functions", {})  # the project's own write functions: {name: path argument}
     chosen, out = a.out, os.path.realpath(report_dir(root, a.out, write=True))
     a.out = out
     if out == os.path.join(root, ".fms"):  # ignores itself, so it is never committed; also restored on a rerun
@@ -520,10 +531,10 @@ def scan(a):
             used += same or cands[:1]  # ponytail: one level deep; follow chains if configs source configs
         c = parsed[s]
         v0 = {**{k: val for u in used for k, val in info[u]["vars"].items()}, **c["params"]}
-        vh = hashlib.sha1(json.dumps(v0, sort_keys=True).encode()).hexdigest()
+        vh = hashlib.sha1(json.dumps([v0, writers], sort_keys=True).encode()).hexdigest()
         if c.get("vh") != vh: jobs.append((s, vh, v0))  # new script, or the variables it inherits changed
         info[s]["used"] = used
-    for (s, vh, _), (ev, names) in zip(jobs, pmap(_parse2, [(s, v0, parsed[s]["stmts"]) for s, _, v0 in jobs])):
+    for (s, vh, _), (ev, names) in zip(jobs, pmap(_parse2, [(s, v0, parsed[s]["stmts"], writers) for s, _, v0 in jobs])):
         parsed[s].update(vh=vh, ev=ev, names=names)
     for s in scripts: info[s].update(ev=parsed[s]["ev"], names=parsed[s]["names"])
     print(f"parsed {len(scripts)} scripts ({len(todo)} read, {len(scripts) - len(todo)} from cache) in {took(t0)}", file=sys.stderr)
