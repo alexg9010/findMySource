@@ -14,6 +14,7 @@ import json
 import os
 import random
 import shutil
+import subprocess
 import sys
 import tempfile
 from unittest import mock
@@ -80,6 +81,10 @@ def test_invariants():
             g = json.load(open(os.path.join(out, "graph.json")))
             path = {n["id"]: n["title"].split("\n")[0] for n in g["nodes"]}
             reads = {(path[e["from"]], path[e["to"]]) for e in g["edges"] if e["kind"] == "reads"}
+            for r in rows(out):  # one evidence label and one code line per source
+                if r["sources"] and not (len(r["sources"].split(";")) == len(r["evidence"].split(";"))
+                                         == len(r["evidence_code"].split(" ;; "))):
+                    bad.append(f"{name}: {r['output']}: sources, evidence and evidence_code differ in number")
             for r in rows(out):
                 for s, ev in zip(r["sources"].split(";"), r["evidence"].split(";")):
                     if r["sources"] and (r["output"], s) in reads and ev.startswith(rules.DROPPED_FOR_READERS):
@@ -113,6 +118,22 @@ def test_invariants():
         assert not bad, "\n".join(bad)
 
 
+def test_tied_sources_in_path_order():
+    """Sources with the same date are listed by path, whatever the hash order of Python's sets: a.Rmd and a.qmd
+    share a_files/ and reach the ordering code through a set. Ten fixed hash seeds: without the path as tie-breaker,
+    some of them list a.qmd first."""
+    with tempfile.TemporaryDirectory() as tmp:
+        shared = projects(tmp)[-1]
+        for seed in range(10):
+            out = os.path.join(tmp, f"out{seed}")
+            subprocess.run([sys.executable, "-m", "findmysource", "--out", out], cwd=shared, check=True,
+                           capture_output=True, env={**os.environ, "PYTHONPATH": REPO, "PYTHONHASHSEED": str(seed)})
+            got = {r["output"]: r["sources"] for r in rows(out)}
+            assert got["a_files/figure-html/p-1.png"] == "a.Rmd;a.qmd", (seed, got)
+            assert got["out/all.rds"] == ";".join(f"s{i}.R" for i in range(6)), (seed, got)
+
+
 if __name__ == "__main__":
     test_invariants()
+    test_tied_sources_in_path_order()
     print("ok")
