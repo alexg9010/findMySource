@@ -184,15 +184,17 @@ def generic_scan(code, v0=None, stmts=None, vars_only=False, writers=None):
         if not vars_only:
             for cm in CALL_ANY.finditer(st):
                 fn = cm.group(1)
-                if is_builder(fn): continue  # evaluated as part of the enclosing argument
+                w = writers.get(fn.rsplit("::", 1)[-1])  # configured: wins over every guess below, builders included
+                if w is None and is_builder(fn): continue  # evaluated as part of the enclosing argument
                 args, _ = split_call(st, cm.end())
-                w = writers.get(fn.rsplit("::", 1)[-1])
                 if w is not None:
-                    a = file_arg(args, w) if isinstance(w, int) else next(
+                    pos = [x for x in args if not NAMED.match(x)]
+                    a = (pos[w] if 0 <= w < len(pos) else None) if isinstance(w, int) else next(
                         (NAMED.sub("", x, count=1) for x in args if re.match(rf"\s*{re.escape(w)}\s*=(?!=)", x)), None)
                     p = evaluate(a, v) if a else "*"
-                    if len(p.replace("*", "")) >= 3 and "://" not in p:
+                    if len(p.replace("*", "")) >= 3 and "://" not in p:  # a folder: "/*" ends no other evidence
                         ev.append((p if FILE_LIKE.search(p) else p.rstrip("/") + "/*", "write", snippet(st, p)))
+                    continue
                 kind = direction(fn, args)
                 for a in args:
                     a = NAMED.sub("", a, count=1)
@@ -457,8 +459,8 @@ def arbitrate(cands, readers):
         if s in readers and l.startswith(rules.DROPPED_FOR_READERS): lost.append((s, l, "reads this file"))
         else: keep[s] = l
     best = min((RANK[l] for l in keep.values()), default=None)
-    lost += [(s, l, f"weaker than {next(x for x in keep.values() if RANK[x] == best)}")
-             for s, l in keep.items() if RANK[l] != best]
+    top = next((l for l in keep.values() if RANK[l] == best), None)  # the winning label, looked up once
+    lost += [(s, l, f"weaker than {top}") for s, l in keep.items() if RANK[l] != best]
     return {s: l for s, l in keep.items() if RANK[l] == best}, sorted(lost, key=lambda x: (RANK[x[1]], x[0]))
 
 
@@ -595,6 +597,9 @@ def scan(a):
     for s, d in info.items():
         for p, kind, code in d["ev"]:
             hit, conf = match(p, s)
+            if p.endswith("/*"):  # a configured folder: the files directly in it, also when its name has a wildcard
+                dirs = [to_regex(c) for c in resolve(p[:-2], s)]
+                hit = [f for f in hit if any(r.fullmatch(f.rpartition("/")[0]) for r in dirs)]
             if kind == "read":
                 for f in hit: reads_of[s].add(f); edges.add((f, s, "reads"))
                 if not hit and "*" not in p: edges.add((resolve(p, s)[0], s, "reads"))  # input outside the scan

@@ -67,6 +67,17 @@ def test_configured_write_functions():
     assert got == {"plots/converted/x.png": "a.R write-glob", "plots/converted/y.png": "a.R write-glob",
                    "plots/other.png": "", "figs/umap.pdf": "a.R write"}, got
 
+    # a builder name can be configured; a position ignores named arguments (file= is the input here); a folder
+    # whose name has a wildcard still covers only the files directly in it
+    got = links({"fms.json": '{"write_functions": {"join": 0, "convert": 0, "save_all": "out_dir"}}',
+                 "a.R": 'join("out/result.csv")\nconvert(file = "raw/input.csv", "figs/output.pdf")\n'
+                        'for (b in batches) save_all(x, out_dir = file.path("plots", b, "converted"))\n',
+                 "out/result.csv": "", "raw/input.csv": "", "figs/output.pdf": "",
+                 "plots/run1/converted/new.png": "", "plots/run1/converted/archive/old.png": ""})
+    got.pop("fms.json")
+    assert got == {"out/result.csv": "a.R write", "raw/input.csv": "", "figs/output.pdf": "a.R write",
+                   "plots/run1/converted/new.png": "a.R write-glob", "plots/run1/converted/archive/old.png": ""}, got
+
 
 def table():
     return "   | evidence | meaning |\n   |---|---|\n" + "".join(
