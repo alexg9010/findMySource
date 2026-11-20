@@ -386,7 +386,8 @@ function flow() {
     const a = ev.target.closest('a[data-go], a[data-copy], .x');
     if (!a) return;
     if (a.dataset.go) go(+a.dataset.go);
-    else if (a.dataset.copy) navigator.clipboard?.writeText(a.dataset.copy).then(() => a.textContent = 'copied', () => {});
+    else if (a.dataset.copy) (navigator.clipboard ? navigator.clipboard.writeText(a.dataset.copy) : Promise.reject()).then(() => a.textContent = 'copied',
+      () => { a.textContent = a.dataset.copy; getSelection().selectAllChildren(a); });  // no clipboard (plain http): show the path selected for Ctrl+C
     else select(null);
   };
   $('fq').oninput = () => {

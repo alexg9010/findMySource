@@ -149,6 +149,10 @@ def main():
             page.click("#fsvg .nd >> nth=0")
             if page.locator("#det a[href^='file:']").count() or not page.locator("#det a[data-copy]").count():
                 problems.append("flow: a hosted report offers file:// links or no copy path")
+            page.evaluate("delete Navigator.prototype.clipboard")  # plain http has no clipboard API
+            page.click("#det a[data-copy]")
+            if page.inner_text("#det a[data-copy]") != page.get_attribute("#det a[data-copy]", "data-copy"):
+                problems.append("flow: without a clipboard, copy path does not show the path")
             page.close()
             srv.shutdown()
 
