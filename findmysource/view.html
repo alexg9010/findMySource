@@ -303,7 +303,10 @@ function flow() {
     scale = sizeSvg($('fsvg'), $('fcard'), P.Wn, P.Hn, fit);
     $('fsvg').innerHTML = ARROW() + o +
       (N.length ? '' : `<text x="20" y="30" class="mute">nothing linked in this step</text>`);
-    if (cur != null && N.some(n => n.id === shown(cur))) highlight(shown(cur));
+    if (cur != null) {  // a selected folder group that is expanded stands for its member files
+      const v = N.some(n => n.id === shown(cur)) ? [shown(cur)] : G.nodes.filter(m => m.grp === cur && N.some(n => n.id === m.id)).map(m => m.id);
+      if (v.length) highlight(v);
+    }
   }
 
   function lineage(id) {
@@ -314,7 +317,7 @@ function flow() {
     return seen;
   }
   function highlight(id) {
-    const keep = id == null ? null : lineage(id);
+    const keep = id == null ? null : new Set([].concat(id).flatMap(i => [...lineage(i)]));  // id: one node or several
     document.querySelectorAll('#fsvg .nd').forEach(g => g.classList.toggle('dim', keep && !keep.has(+g.dataset.id)));
     document.querySelectorAll('#fsvg .ed').forEach(p => { const e = E[+p.dataset.i], on = keep && keep.has(e.from) && keep.has(e.to);
       p.classList.toggle('dim', keep && !on); p.classList.toggle('hl', !!on); });
