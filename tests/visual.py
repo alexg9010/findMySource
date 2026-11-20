@@ -83,6 +83,11 @@ def main():
                         if not page.is_visible("#det") or not page.inner_text("#det").strip():
                             problems.append("flow: clicking a box shows no details panel")
                         snap(page, "flow-click")
+                        page.click("#fit")  # redraws the map: the selection must stay highlighted
+                        if page.locator("#fsvg .nd.dim").count() != dimmed:
+                            problems.append("flow: the highlight is lost after the 100% / Fit toggle")
+                        page.click("#fit")
+                        leaf = page.locator("#fsvg .nd").nth(xs.index(max(xs)))
                         leaf.hover()
                         if not page.eval_on_selector("#tip", "t => t.style.display === 'block' && t.textContent"):
                             problems.append("flow: hovering a box shows no tooltip")
