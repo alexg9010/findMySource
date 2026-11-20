@@ -98,9 +98,9 @@ def _args(tok, i, v):
     return args, i + 1
 
 # path builders, recognised by the shape of their name in any language
-names_re = lambda ns: re.compile(r"(?:^|[.:])(?:" + "|".join(map(re.escape, ns)) + r")$", re.I)  # pkg::f, os.path.f
-JOIN_RE, CONCAT_RE, WRAP_RE, FORMAT_RE = map(names_re, (rules.JOIN_CALLS, rules.CONCAT_CALLS, rules.WRAP_CALLS,
-                                                        rules.FORMAT_CALLS))
+names_re = lambda ns, flags=re.I: re.compile(r"(?:^|[.:])(?:" + "|".join(map(re.escape, ns)) + r")$", flags)  # pkg::f
+JOIN_RE, CONCAT_RE, WRAP_RE = map(names_re, (rules.JOIN_CALLS, rules.CONCAT_CALLS, rules.WRAP_CALLS))
+FORMAT_RE = names_re(rules.FORMAT_CALLS, flags=0)  # case-sensitive, as these always were
 def is_builder(fn):
     return bool(JOIN_RE.search(fn) or CONCAT_RE.search(fn) or WRAP_RE.search(fn) or FORMAT_RE.search(fn))
 
