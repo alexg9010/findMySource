@@ -556,7 +556,8 @@ def scan(a):
     for f in sorted(stat): fp.update(f"{f}\0{stat[f].st_mtime_ns}\0{stat[f].st_size}\n".encode())
     fp = fp.hexdigest()
     if fp == old.get("fingerprint") and all(os.path.exists(os.path.join(a.out, x)) for x in ("index.html", "manifest.tsv")):
-        os.utime(os.path.join(a.out, "manifest.tsv"))  # queries read the newest report: this scan's, even if unchanged
+        try: os.utime(os.path.join(a.out, "manifest.tsv"))  # queries read the newest report: this one, even unchanged
+        except OSError: pass  # someone else's report (--out): only a hint for choosing between reports
         print(f"no changes since the last scan ({old.get('generated', '?')}); report is up to date ({took(t0)}): {rel(os.path.join(a.out, 'index.html'))}", file=sys.stderr)
         print(old.get("summary", ""))
         return

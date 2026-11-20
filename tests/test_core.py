@@ -153,6 +153,15 @@ def test_report_goes_to_a_hidden_folder_or_the_user_cache():
         os.remove(f"{t}/rw/results/other.csv"); os.remove(f"{t}/rw/make_other.py")  # back to what .fms/ has
         assert "no changes" in fms(f"{t}/rw", f"{t}/cache").stderr
         assert "make_other.py" not in fms(f"{t}/rw", f"{t}/cache", "results/other.csv").stdout  # this scan, not the cache
+        # an unchanged report owned by someone else (--out): its time cannot be set, the scan still succeeds
+        import argparse, findmysource.cli as cli
+        def deny(*_): raise PermissionError("not the owner")
+        utime, cwd, os.utime = os.utime, os.getcwd(), deny
+        try:
+            os.chdir(f"{t}/rw")
+            cli.scan(argparse.Namespace(config="fms.json", out=".fms", path=None))
+        finally:
+            os.utime = utime; os.chdir(cwd)
 
         os.chmod(f"{t}/ro", 0o555)  # e.g. a shared project folder of a colleague
         try:
