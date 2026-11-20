@@ -22,7 +22,7 @@ Relative paths are tried against the script's folder and the project root; symli
 resolved automatically, so aliases are only needed for mount points with two spellings.
 Ceilings: names computed at run time -> wildcard matches; variables inherited one level deep;
 paths from command-line args are unknown; only the Network tab needs internet (vis-network).
-Config keys (JSON, all optional): scripts, outputs, exclude, aliases, extensions, hidden.
+Config keys (JSON, all optional): scripts, outputs, exclude, aliases, extensions, hidden, write_functions.
   {"scripts": ["scripts"], "outputs": ["results", "figures"], "aliases": {"/local": "/data/local"}}
 """
 import argparse, bisect, csv, datetime, fnmatch, hashlib, json, os, re, subprocess, sys, time
@@ -166,9 +166,12 @@ def snippet(st, p):
     hit = max(lines, key=lambda l: sum(k in l for k in keys))  # the line with most pieces of the name (ties: first)
     return (hit if hit == lines[0] else f"{lines[0][:60]} … {hit}")[:200]
 
-def generic_scan(code, v0=None, stmts=None, vars_only=False):
+def generic_scan(code, v0=None, stmts=None, vars_only=False, writers=None):
     """-> dict(ev=[(pattern, write|read|mention, statement)], names={literal}, uses={script name}, vars={}, stmts=[]).
-    vars_only: only follow assignments and script references (cheap first pass)."""
+    vars_only: only follow assignments and script references (cheap first pass).
+    writers: the project's own write functions from fms.json, {name: argument name or position of the path};
+    a folder there means every file in it."""
+    writers = writers or {}
     v = dict(v0 or {})
     ev, names, uses = [], set(), set()
     stmts = statements(code) if stmts is None else stmts
@@ -181,8 +184,20 @@ def generic_scan(code, v0=None, stmts=None, vars_only=False):
         if not vars_only:
             for cm in CALL_ANY.finditer(st):
                 fn = cm.group(1)
-                if is_builder(fn): continue  # evaluated as part of the enclosing argument
+                # configured: wins over every guess below, builders included. Full name first (save.plots), then
+                # without its package or module (pkg::convert_all, converters.convert_all)
+                w = next((writers[k] for k in (fn, fn.rsplit("::", 1)[-1], re.split(r"[.:$]", fn)[-1]) if k in writers), None)
+                if w is None and is_builder(fn): continue  # evaluated as part of the enclosing argument
                 args, _ = split_call(st, cm.end())
+                if w is not None:
+                    pos = [x for x in args if not NAMED.match(x)]
+                    a = (pos[w] if 0 <= w < len(pos) else None) if isinstance(w, int) else next(
+                        (NAMED.sub("", x, count=1) for x in args if re.match(rf"\s*{re.escape(w)}\s*=(?!=)", x)), None)
+                    p = evaluate(a, v) if a else "*"
+                    if p.replace("*", "").strip("/") and "://" not in p:  # any explicit name, even "qc" or "."
+                        # no extension: maybe a folder ("/*" ends no other evidence); the link step decides
+                        ev.append((p if FILE_LIKE.search(p) else p.rstrip("/") + "/*", "write", snippet(st, p)))
+                    continue
                 kind = direction(fn, args)
                 for a in args:
                     a = NAMED.sub("", a, count=1)
@@ -423,8 +438,8 @@ def _parse1(s):
 
 def _parse2(job):
     """second pass: evidence, with the variables inherited from source()d / imported scripts"""
-    s, v0, stmts = job
-    g = generic_scan(read_code(s)[0], v0, stmts=stmts)
+    s, v0, stmts, writers = job
+    g = generic_scan(read_code(s)[0], v0, stmts=stmts, writers=writers)
     return [list(e) for e in g["ev"]], sorted(g["names"])
 
 def pmap(fn, items):
@@ -447,8 +462,8 @@ def arbitrate(cands, readers):
         if s in readers and l.startswith(rules.DROPPED_FOR_READERS): lost.append((s, l, "reads this file"))
         else: keep[s] = l
     best = min((RANK[l] for l in keep.values()), default=None)
-    lost += [(s, l, f"weaker than {next(x for x in keep.values() if RANK[x] == best)}")
-             for s, l in keep.items() if RANK[l] != best]
+    top = next((l for l in keep.values() if RANK[l] == best), None)  # the winning label, looked up once
+    lost += [(s, l, f"weaker than {top}") for s, l in keep.items() if RANK[l] != best]
     return {s: l for s, l in keep.items() if RANK[l] == best}, sorted(lost, key=lambda x: (RANK[x[1]], x[0]))
 
 
@@ -468,6 +483,7 @@ def scan(a):
     exclude = cfg.get("exclude", rules.EXCLUDE)
     script_exclude = exclude if "exclude" in cfg else exclude + rules.SCRIPT_ONLY_EXCLUDE
     hidden = cfg.get("hidden", False)  # scan hidden folders too
+    writers = cfg.get("write_functions", {})  # the project's own write functions: {name: path argument}
     chosen, out = a.out, os.path.realpath(report_dir(root, a.out, write=True))
     a.out = out
     if out == os.path.join(root, ".fms"):  # ignores itself, so it is never committed; also restored on a rerun
@@ -520,10 +536,10 @@ def scan(a):
             used += same or cands[:1]  # ponytail: one level deep; follow chains if configs source configs
         c = parsed[s]
         v0 = {**{k: val for u in used for k, val in info[u]["vars"].items()}, **c["params"]}
-        vh = hashlib.sha1(json.dumps(v0, sort_keys=True).encode()).hexdigest()
+        vh = hashlib.sha1(json.dumps([v0, writers], sort_keys=True).encode()).hexdigest()
         if c.get("vh") != vh: jobs.append((s, vh, v0))  # new script, or the variables it inherits changed
         info[s]["used"] = used
-    for (s, vh, _), (ev, names) in zip(jobs, pmap(_parse2, [(s, v0, parsed[s]["stmts"]) for s, _, v0 in jobs])):
+    for (s, vh, _), (ev, names) in zip(jobs, pmap(_parse2, [(s, v0, parsed[s]["stmts"], writers) for s, _, v0 in jobs])):
         parsed[s].update(vh=vh, ev=ev, names=names)
     for s in scripts: info[s].update(ev=parsed[s]["ev"], names=parsed[s]["names"])
     print(f"parsed {len(scripts)} scripts ({len(todo)} read, {len(scripts) - len(todo)} from cache) in {took(t0)}", file=sys.stderr)
@@ -564,13 +580,23 @@ def scan(a):
         return
     idx = Index(set(stat) | set(scripts))
 
-    def match(p, s):
-        """resolved candidates first; bare-relative suffix match only as fallback."""
+    def match(p, s, folder=False):
+        """resolved candidates first; bare-relative suffix match only as fallback.
+        folder: p is "<folder>/*", a configured write function's path without an extension. Per candidate: a file
+        of that name, else the files directly in that folder; a candidate with neither falls through to the next"""
         cands = resolve(p, s)
-        for c in cands[:-1] if len(cands) > 1 else cands:
+        def one(c):
+            if not (folder and c.endswith("/*")): return idx.match(c)
+            files, conf = idx.match(c[:-2])  # an existing file without an extension
+            if files and "*" not in c[:-2]: return files, conf  # a literal name: that file, not a folder
+            r = to_regex(c[:-2])  # the resolved folder: symlinks and wildcards as in the candidate itself
             hit, conf = idx.match(c)
+            # a wildcard name stands for several paths: some may be files, others folders
+            return files + [f for f in hit if r.fullmatch(f.rpartition("/")[0])], conf
+        for c in cands[:-1] if len(cands) > 1 else cands:
+            hit, conf = one(c)
             if hit: return hit, conf
-        return idx.match(cands[-1]) if len(cands) > 1 else ([], "exact")
+        return one(cands[-1]) if len(cands) > 1 else ([], "exact")
 
     # 3. link: every piece of evidence gets a RANK; an output's sources are the scripts with the best rank
     src_of = defaultdict(dict)  # output -> {script: label}
@@ -583,7 +609,7 @@ def scan(a):
     for f in stat: by_stem[f.rpartition("/")[2].split(".")[0]].append(f)
     for s, d in info.items():
         for p, kind, code in d["ev"]:
-            hit, conf = match(p, s)
+            hit, conf = match(p, s, folder=p.endswith("/*"))  # "/*": a configured path without an extension
             if kind == "read":
                 for f in hit: reads_of[s].add(f); edges.add((f, s, "reads"))
                 if not hit and "*" not in p: edges.add((resolve(p, s)[0], s, "reads"))  # input outside the scan

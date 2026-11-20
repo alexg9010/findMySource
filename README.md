@@ -158,7 +158,8 @@ upstream:
   "aliases": { "/local": "/data/local" },
   "exclude": ["*.RData", "*_cache"],
   "hidden": false,
-  "extensions": [".r", ".rmd", ".qmd", ".ipynb"]
+  "extensions": [".r", ".rmd", ".qmd", ".ipynb"],
+  "write_functions": {"convert_all": "out_dir", "save_fig": 1}
 }
 ```
 
@@ -170,6 +171,7 @@ upstream:
 | `exclude` | file and folder name globs to skip | RStudio, cache and editor files; for scripts also `build` and `dist` (packaging copies) |
 | `hidden` | also scan hidden folders (`.git`, `.snakemake`, …). A hidden folder listed in `scripts`/`outputs` is always scanned. | `false` |
 | `extensions` | script types to parse | all types listed under [How it works](#how-it-works) |
+| `write_functions` | your own functions that write files but don't say so in their name, with the argument that holds the path: its name (`"out_dir"`) or position (`1` = second). A folder there covers every file directly in it. The **Unmatched** tab shows where one is missing. | `{}` |
 
 ### Large projects
 
