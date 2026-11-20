@@ -116,7 +116,16 @@ def main():
                         problems.append("flow: Enter on a focused box shows no details panel")
                     if not page.evaluate("!!document.activeElement.closest('#fsvg .nd')"):
                         problems.append("flow: keyboard focus is lost after selecting a box")
+                    page.select_option("#sel", "(all)")
+                    page.fill("#fq", "")
+                    page.type("#fq", "pca.png")  # a search that matches must not pull focus out of the search box
+                    if page.evaluate("document.activeElement.id") != "fq" or page.input_value("#fq") != "pca.png":
+                        problems.append("flow: searching moves keyboard focus away from the search box")
                 if tab == "table":  # the staleness filter must narrow the table
+                    page.focus("#tb th >> nth=0")
+                    page.keyboard.press("Enter")
+                    if page.evaluate("document.activeElement.tagName") != "TH":
+                        problems.append("table: keyboard focus is lost after sorting")
                     before = page.locator("#tb tr").count()
                     page.select_option("#sf", "stale")
                     after = page.locator("#tb tr").count()

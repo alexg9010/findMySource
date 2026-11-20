@@ -330,12 +330,12 @@ function flow() {
   }
   $('fsvg').onclick = ev => { const g = ev.target.closest('.nd'); select(g ? +g.dataset.id : null); };
   function select(id) {  // trace + details panel; the map is re-fitted when the panel opens or closes
-    const was = $('det').hidden;
+    const was = $('det').hidden, onMap = $('fsvg').contains(document.activeElement);  // search and other tabs keep their focus
     cur = id;
     details(id);
     if ($('det').hidden !== was) draw();
     highlight(id == null ? null : shown(id));
-    if (id != null) $('fsvg').querySelector(`.nd[data-id="${shown(id)}"]`)?.focus({preventScroll: true});  // the redraw dropped keyboard focus
+    if (id != null && onMap) $('fsvg').querySelector(`.nd[data-id="${shown(id)}"]`)?.focus({preventScroll: true});  // the redraw dropped keyboard focus
   }
   // the box that shows a node: its folder group when large folders are grouped
   const shown = id => $('fold').checked && G.nodes[id].grp !== undefined ? G.nodes[id].grp : id;
@@ -520,7 +520,7 @@ function table() {
         `<td>${r.c.map(chip).join('<br>')}</td>` + (staleBy(r)
           ? `<td class="stale" data-tip="the script was edited ${ago(staleBy(r))} after this file was written: possibly stale">⚠ ${day(r.m)}<br><small>script edited ${ago(staleBy(r))} later</small></td>`
           : `<td>${day(r.m)}</td>`) + `<td>${r.sm.map(day).join('<br>')}</td></tr>`).join('');
-    $('tb').querySelectorAll('th').forEach(th => th.onclick = () => { dir = key === th.dataset.k ? -dir : 1; key = th.dataset.k; draw(); });
+    $('tb').querySelectorAll('th').forEach(th => th.onclick = () => { dir = key === th.dataset.k ? -dir : 1; key = th.dataset.k; draw(); $('tb').querySelector(`th[data-k="${key}"]`).focus(); });
   }
   $('q').oninput = $('cf').onchange = $('sf').onchange = draw;
   $('tb').onclick = ev => { const tr = ev.target.closest('tr[data-o]'); if (tr) openPath(tr.dataset.o); };
