@@ -1,0 +1,592 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>findMySource</title>
+<style>
+  :root{--bg:#f7f7f5;--panel:#fff;--ink:#1f2328;--mute:#6a737d;--line:#e3e3df;--acc:#1f8a5b;
+        --script:#1f8a5b;--file:#2f6fbf;--group:#c7792a;--input:#8a8f98;--read:#2f6fbf;--src:#8a5cc7;--stale:#d1453b;--fresh:#1f8a5b}
+  @media (prefers-color-scheme:dark){:root{--bg:#16181c;--panel:#1e2126;--ink:#e6e6e6;--mute:#9aa0a6;--line:#30343b;
+        --script:#3fb47f;--file:#5b95e0;--group:#e09a50;--input:#9aa0a6;--read:#5b95e0;--src:#a985e0;--stale:#ef6b61;--fresh:#3fb47f}}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font:13px/1.4 system-ui,-apple-system,"Segoe UI",sans-serif}
+  header{padding:14px 20px 0;display:flex;flex-wrap:wrap;gap:12px 24px;align-items:flex-end}
+  h1{margin:0;font-size:18px;letter-spacing:.2px}
+  .sub{color:var(--mute);font-size:12px}
+  .stats{display:flex;gap:8px;flex-wrap:wrap;margin-left:auto}
+  .stat{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:6px 12px;min-width:90px}
+  .stat b{display:block;font-size:17px}.stat span{color:var(--mute);font-size:11px}
+  nav{position:sticky;top:0;z-index:10;background:var(--bg);padding:12px 20px;border-bottom:1px solid var(--line);display:flex;gap:4px;flex-wrap:wrap}
+  nav button{font:inherit;padding:6px 14px;border:1px solid var(--line);background:var(--panel);color:var(--ink);border-radius:999px;cursor:pointer}
+  nav button:hover{border-color:var(--acc)}
+  nav button.on{background:var(--acc);border-color:var(--acc);color:#fff}
+  .view{display:none;padding:14px 20px}.view.on{display:block}
+  .tools{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px;color:var(--mute)}
+  .tools button{font:inherit;padding:5px 10px;border:1px solid var(--line);border-radius:6px;background:var(--panel);color:var(--ink);cursor:pointer}
+  .tools button:hover{border-color:var(--acc)}
+  td.stale{color:var(--stale)}
+  .tools select,.tools input{font:inherit;padding:5px 8px;border:1px solid var(--line);border-radius:6px;background:var(--panel);color:var(--ink)}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:10px;overflow:auto;max-height:calc(100vh - 210px)}
+  .key{display:inline-flex;align-items:center;gap:5px;margin-right:10px}
+  .sw{width:11px;height:11px;border-radius:3px;display:inline-block}
+  .ln{width:22px;border-top:2px solid;display:inline-block}
+  svg text{fill:var(--ink)}
+  .nd{cursor:pointer}.nd rect.b{fill:var(--panel);stroke:var(--line)}.nd:hover rect.b{stroke:var(--ink)}
+  .nd text{font-size:11.5px;pointer-events:none}
+  .ed{fill:none;stroke-width:1.4;opacity:.55}
+  .dim{opacity:.12!important}.hl .ed,.ed.hl{opacity:1;stroke-width:2.2}
+  .axis{stroke:var(--line)}.lbl{font-size:11px}.mute{fill:var(--mute)!important}
+  table{border-collapse:collapse;width:100%}
+  th,td{padding:6px 10px;text-align:left;vertical-align:top;border-bottom:1px solid var(--line)}
+  th{position:sticky;top:0;background:var(--panel);cursor:pointer;user-select:none;white-space:nowrap}
+  tr:hover td{background:color-mix(in srgb,var(--acc) 6%,transparent)}
+  td.p{font-family:ui-monospace,Menlo,monospace;font-size:12px;word-break:break-all}
+  .chip{display:inline-block;padding:0 7px;border-radius:999px;font-size:11px;border:1px solid var(--line);margin:1px 0}
+  .chip.strong{color:var(--fresh);border-color:var(--fresh)}.chip.medium{color:var(--group);border-color:var(--group)}
+  .chip.weak{color:var(--mute)}
+  #tip{position:fixed;pointer-events:none;z-index:50;max-width:520px;background:#111c;color:#fff;padding:7px 10px;border-radius:6px;
+       font:12px/1.45 ui-monospace,Menlo,monospace;white-space:pre-wrap;word-break:break-all;display:none;backdrop-filter:blur(4px)}
+  .empty{padding:40px;text-align:center;color:var(--mute)}
+  .fwrap{display:flex;gap:12px;align-items:flex-start}.fwrap .card{flex:1;min-width:0}
+  #det{width:360px;flex:none;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px 14px;
+       max-height:calc(100vh - 210px);overflow:auto}
+  #det h3{margin:0 0 2px;font-size:14px;word-break:break-all}
+  #det .p{font-family:ui-monospace,Menlo,monospace;font-size:11.5px;word-break:break-all;color:var(--mute)}
+  #det pre{background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:6px 8px;white-space:pre-wrap;
+           word-break:break-all;font-size:11.5px;margin:4px 0 6px}
+  #det .sec{margin:12px 0 3px;font-weight:600;font-size:12px}
+  #det a{color:var(--file);cursor:pointer;text-decoration:none}#det a:hover{text-decoration:underline}
+  #det ul{margin:2px 0;padding-left:16px}#det li{word-break:break-all}
+  #det .x{float:right;border:0;background:none;color:var(--mute);cursor:pointer;font-size:18px;line-height:1}
+  .warn{color:var(--stale)}[data-o]{cursor:pointer}
+  @media (max-width:900px){.fwrap{flex-wrap:wrap}#det{width:100%}}
+  #utree{padding:8px 4px}#utree details{margin-left:18px}#utree>details{margin-left:0}
+  #utree summary{display:flex;gap:10px;align-items:center;padding:3px 6px;border-radius:5px;cursor:pointer;list-style:none}
+  #utree summary::before{content:'▸';color:var(--mute);width:10px}#utree details[open]>summary::before{content:'▾'}
+  #utree summary.leaf::before{content:''}#utree summary:hover{background:color-mix(in srgb,var(--acc) 7%,transparent)}
+  #utree .nm{font-family:ui-monospace,Menlo,monospace;font-size:12px;word-break:break-all;flex:1}
+  #utree .n{color:var(--mute);font-variant-numeric:tabular-nums;min-width:70px;text-align:right}
+  #utree .bar{width:120px;height:6px;border-radius:3px;background:var(--line);flex:none;overflow:hidden}
+  #utree .bar i{display:block;height:100%;background:var(--group)}
+  .stat[data-go]{cursor:pointer}.stat[data-go]:hover{border-color:var(--acc)}
+</style>
+
+<header>
+  <div><h1>findMySource</h1><div class="sub" id="sub"></div></div>
+  <div class="stats" id="stats"></div>
+</header>
+<nav>
+  <button data-v="flow">Flow</button><button data-v="timeline">Timeline</button><button data-v="matrix">Matrix</button>
+  <button data-v="table">Table</button><button data-v="network">Steps</button><button data-v="unmatched">Unmatched</button>
+</nav>
+
+<section id="flow" class="view">
+  <div class="tools">
+    <label>pipeline step <select id="sel"></select></label>
+    <input id="fq" placeholder="find a file or script…" size="28">
+    <button id="fit" data-tip="switch between fitting the whole map into the window and 100% size">100%</button>
+    <label data-tip="when a script writes more than 15 files into one folder, show the folder as one box"><input type="checkbox" id="fold" checked> group large folders</label>
+    <span><span class="key"><span class="sw" style="background:var(--script)"></span>script</span>
+      <span class="key"><span class="sw" style="background:var(--file)"></span>file</span>
+      <span class="key"><span class="sw" style="background:var(--group)"></span>folder group</span>
+      <span class="key"><span class="sw" style="background:var(--input)"></span>external input</span>
+      <span class="key"><span class="sw" style="background:var(--stale);border-radius:50%"></span>possibly stale</span>
+      <span class="key"><span class="ln" style="border-color:var(--script)"></span>writes</span>
+      <span class="key"><span class="ln" style="border-color:var(--read);border-top-style:dashed"></span>reads</span>
+      <span class="key"><span class="ln" style="border-color:var(--src);border-top-style:dotted"></span>source()</span></span>
+  </div>
+  <div class="tools" style="margin-top:-4px">Left → right is execution order. Click a box to trace everything upstream and downstream and see its details; click empty space to reset.</div>
+  <div class="fwrap"><div class="card" id="fcard"><svg id="fsvg"></svg></div><aside id="det" hidden></aside></div>
+</section>
+
+<section id="timeline" class="view">
+  <div class="tools"><label><input type="checkbox" id="tstale"> only possibly stale</label>
+    <span class="key"><span class="sw" style="background:var(--fresh)"></span>output newer than its script</span>
+    <span class="key"><span class="sw" style="background:var(--stale)"></span>script edited more than 1 h after the output (possibly stale)</span>
+    <span class="key"><span class="sw" style="background:var(--ink);width:3px"></span>script's last change</span></div>
+  <div class="card"><svg id="tsvg"></svg></div>
+</section>
+
+<section id="matrix" class="view">
+  <div class="tools">Scripts (rows) × output folders (columns). Dot size = number of files written.</div>
+  <div class="card"><svg id="msvg"></svg></div>
+</section>
+
+<section id="table" class="view">
+  <div class="tools"><input id="q" placeholder="filter output or script…" size="34" data-tip="click a row to show it in Flow">
+    <select id="cf"><option value="">any evidence</option></select>
+    <select id="sf"><option value="">any date</option><option value="stale">possibly stale</option><option value="fresh">up to date</option></select>
+    <span id="cnt"></span></div>
+  <div class="card"><table id="tb"></table></div>
+</section>
+
+<section id="network" class="view">
+  <div class="tools">
+    <span>One box per pipeline step (script folder). Arrow width = files one step reads from another.
+      Click a step to expand it into its scripts; click a script to open it in Flow.</span>
+    <button id="nexp">expand all</button><button id="ncol">collapse all</button>
+    <label><input type="checkbox" id="ninp"> show external inputs</label></div>
+  <div class="card" id="ncard"><svg id="nsvg"></svg></div>
+</section>
+<section id="unmatched" class="view">
+  <div class="tools"><span>Files in the scanned output folders that no script could be linked to, by folder.
+    Raw data and tool output (alignments, downloads) usually belong in <b>exclude</b> in fms.json;
+    results you made yourself point to a script that fms cannot read yet, or to one outside <b>scripts</b>.</span></div>
+  <div class="card"><div id="utree"></div></div>
+</section>
+<div id="tip"></div>
+
+<script>
+const D = {"graph": {"nodes": [{"id": 0, "label": "01_load.R", "group": "script", "title": "scripts/01_load.R\nlast change 2026-11-18T16:38:27+01:00"}, {"id": 1, "label": "clean.rds", "group": "file", "title": "results/clean.rds\nmodified 2026-11-18T17:38:27+01:00"}, {"id": 2, "label": "02_model.Rmd", "group": "script", "title": "scripts/02_model.Rmd\nlast change 2026-11-18T16:38:27+01:00"}, {"id": 3, "label": "model.rds", "group": "file", "title": "results/model.rds\nmodified 2026-11-18T17:38:27+01:00"}, {"id": 4, "label": "de_table.tsv", "group": "file", "title": "results/de_table.tsv\nmodified 2026-11-18T17:38:27+01:00"}, {"id": 5, "label": "02_model.html", "group": "file", "title": "scripts/02_model.html\nmodified 2026-11-18T17:38:27+01:00"}, {"id": 6, "label": "03_figures.R", "group": "script", "title": "scripts/03_figures.R\nlast change 2026-11-18T16:38:27+01:00"}, {"id": 7, "label": "heatmap_GATA4.png", "group": "file", "title": "figures/heatmap_GATA4.png\nmodified 2026-11-18T17:38:27+01:00"}, {"id": 8, "label": "heatmap_MYH6.png", "group": "file", "title": "figures/heatmap_MYH6.png\nmodified 2026-11-18T17:38:27+01:00"}, {"id": 9, "label": "heatmap_TNNT2.png", "group": "file", "title": "figures/heatmap_TNNT2.png\nmodified 2026-11-18T17:38:27+01:00"}, {"id": 10, "label": "volcano.pdf", "group": "file", "title": "figures/volcano.pdf\nmodified 2026-11-18T17:38:27+01:00"}, {"id": 11, "label": "pca.png", "group": "file", "title": "figures/qc/pca.png\nmodified 2026-10-19T17:38:27+02:00\n\u26a0 script edited 30 days later: possibly stale", "stale": 30.0}, {"id": 12, "label": "counts.csv", "group": "input", "title": "data/raw/counts.csv\n(not a tracked output)"}, {"id": 13, "label": "samples.xlsx", "group": "input", "title": "data/raw/samples.xlsx\n(not a tracked output)"}, {"id": 14, "label": "utils.R", "group": "script", "title": "scripts/utils.R\nlast change 2026-11-18T16:38:27+01:00"}], "edges": [{"from": 0, "to": 1, "kind": "writes"}, {"from": 1, "to": 2, "kind": "reads"}, {"from": 2, "to": 3, "kind": "writes"}, {"from": 2, "to": 4, "kind": "writes"}, {"from": 2, "to": 5, "kind": "writes"}, {"from": 4, "to": 6, "kind": "reads"}, {"from": 6, "to": 7, "kind": "writes"}, {"from": 6, "to": 8, "kind": "writes"}, {"from": 6, "to": 9, "kind": "writes"}, {"from": 6, "to": 10, "kind": "writes"}, {"from": 6, "to": 11, "kind": "writes"}, {"from": 12, "to": 0, "kind": "reads"}, {"from": 13, "to": 0, "kind": "reads"}, {"from": 14, "to": 0, "kind": "reads"}, {"from": 14, "to": 0, "kind": "source"}, {"from": 14, "to": 2, "kind": "reads"}, {"from": 14, "to": 2, "kind": "source"}, {"from": 14, "to": 6, "kind": "reads"}, {"from": 14, "to": 6, "kind": "source"}]}, "rows": [{"o": "figures/heatmap_GATA4.png", "s": ["scripts/03_figures.R"], "c": ["lang-glob"], "m": "2026-11-18T17:38:27+01:00", "sm": ["2026-11-18T16:38:27+01:00"], "x": ["png(file.path(fig_dir, paste0(\"heatmap_\", g, \".png\")))"]}, {"o": "figures/heatmap_MYH6.png", "s": ["scripts/03_figures.R"], "c": ["lang-glob"], "m": "2026-11-18T17:38:27+01:00", "sm": ["2026-11-18T16:38:27+01:00"], "x": ["png(file.path(fig_dir, paste0(\"heatmap_\", g, \".png\")))"]}, {"o": "figures/heatmap_TNNT2.png", "s": ["scripts/03_figures.R"], "c": ["lang-glob"], "m": "2026-11-18T17:38:27+01:00", "sm": ["2026-11-18T16:38:27+01:00"], "x": ["png(file.path(fig_dir, paste0(\"heatmap_\", g, \".png\")))"]}, {"o": "figures/qc/pca.png", "s": ["scripts/03_figures.R"], "c": ["write"], "m": "2026-10-19T17:38:27+02:00", "sm": ["2026-11-18T16:38:27+01:00"], "x": ["ggsave(file.path(fig_dir, \"pca.png\"))"]}, {"o": "figures/volcano.pdf", "s": ["scripts/03_figures.R"], "c": ["write"], "m": "2026-11-18T17:38:27+01:00", "sm": ["2026-11-18T16:38:27+01:00"], "x": ["ggsave(file.path(fig_dir, \"volcano.pdf\"), p)"]}, {"o": "results/clean.rds", "s": ["scripts/01_load.R"], "c": ["write"], "m": "2026-11-18T17:38:27+01:00", "sm": ["2026-11-18T16:38:27+01:00"], "x": ["saveRDS(clean, file.path(results_dir, \"clean.rds\"))"]}, {"o": "results/de_table.tsv", "s": ["scripts/02_model.Rmd"], "c": ["name"], "m": "2026-11-18T17:38:27+01:00", "sm": ["2026-11-18T16:38:27+01:00"], "x": ["\"de_table\""]}, {"o": "results/model.rds", "s": ["scripts/02_model.Rmd"], "c": ["write"], "m": "2026-11-18T17:38:27+01:00", "sm": ["2026-11-18T16:38:27+01:00"], "x": ["saveRDS(fit, file.path(\"..\", params$out_dir, \"model.rds\"))"]}, {"o": "scripts/02_model.html", "s": ["scripts/02_model.Rmd"], "c": ["stem-rule"], "m": "2026-11-18T17:38:27+01:00", "sm": ["2026-11-18T16:38:27+01:00"], "x": [""]}], "unm": {"data/raw": 2, "figures": 1}, "scripts": [{"p": "scripts/01_load.R", "m": "2026-11-18T16:38:27+01:00"}, {"p": "scripts/02_model.Rmd", "m": "2026-11-18T16:38:27+01:00"}, {"p": "scripts/03_figures.R", "m": "2026-11-18T16:38:27+01:00"}, {"p": "scripts/utils.R", "m": "2026-11-18T16:38:27+01:00"}], "unmatched": 3, "root": "/home/agosdsc/git/findMySource/examples/r-project", "generated": "2026-11-20T09:38+01:00"}, G = D.graph, $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
+const dirOf = p => p.includes('/') ? p.slice(0, p.lastIndexOf('/')) : '.';
+// "possibly stale" = the script was edited more than an hour after the output was written
+// (edits within the hour are usually "ran it, then fixed a comment")
+const STALE_MS = 3600e3;
+const ago = ms => ms < 864e5 ? Math.round(ms / 3600e3) + ' h' : ms < 60 * 864e5 ? Math.round(ms / 864e5) + ' days' : Math.round(ms / (30.4 * 864e5)) + ' months';
+const staleBy = r => { const g = Math.max(...r.sm.map(s => new Date(s).getTime())) - new Date(r.m).getTime(); return g > STALE_MS ? g : 0; };
+const day = s => (s || '').replace('T', ' ').slice(0, 19);  // "2026-11-19T12:05:00+01:00" -> "2026-11-19 12:05:00"
+const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+const NCOL = {script: '--script', file: '--file', group: '--group', input: '--input'};
+const ECOL = {writes: '--script', reads: '--read', source: '--src'};
+const PATH = n => n.title.split('\n')[0], scriptDir = n => dirOf(PATH(n));
+const NODE = {}, WRITER = {}, ROW = Object.fromEntries(D.rows.map(r => [r.o, r]));
+G.nodes.forEach(n => { if (n.group !== 'group' && NODE[PATH(n)] === undefined) NODE[PATH(n)] = n.id; });
+const WRITERS = {};  // every script that writes a node (a file can have several equally strong sources)
+G.edges.forEach(e => { if (e.kind === 'writes') (WRITERS[e.to] = WRITERS[e.to] || []).push(e.from); });
+for (const id in WRITERS) WRITER[id] = WRITERS[id][0];
+// pipeline step = folder of the script (of the writing script, for files)
+const stepOf = id => G.nodes[id].group === 'script' ? scriptDir(G.nodes[id])
+  : WRITER[id] !== undefined ? scriptDir(G.nodes[WRITER[id]]) : '(external inputs)';
+const flowStep = id => {  // external inputs live in the step of the first script that reads them
+  const st = stepOf(id), r = G.edges.find(e => e.from === id);
+  return st !== '(external inputs)' ? st : r ? stepOf(r.to) : '(all)';
+};
+function openPath(p) { const id = NODE[p]; if (id !== undefined) { show('flow'); flow.open(flowStep(id), id); } }
+
+/* header */
+$('sub').textContent = D.root + ' · generated ' + day(D.generated);
+const scriptsUsed = new Set(D.rows.flatMap(r => r.s)).size;
+$('stats').innerHTML = [[D.scripts.length, 'scripts parsed'], [scriptsUsed, 'scripts with outputs'],
+  [D.rows.length, 'matched outputs', 'table'], [D.rows.filter(staleBy).length, 'possibly stale', 'stale'],
+  [D.unmatched, 'unmatched', 'unmatched']]
+  .map(([n, l, go]) => `<div class="stat"${go ? ` data-go="${go}"` : ''}><b>${n.toLocaleString()}</b><span>${l}</span></div>`).join('');
+$('stats').onclick = ev => {
+  const g = ev.target.closest('[data-go]');
+  if (!g) return;
+  show(g.dataset.go === 'stale' ? 'table' : g.dataset.go);
+  if (g.dataset.go === 'stale' || g.dataset.go === 'table') { $('sf').value = g.dataset.go === 'stale' ? 'stale' : ''; $('sf').onchange(); }
+};
+
+/* one tooltip for every view: any element with data-tip */
+const tip = $('tip');
+document.addEventListener('mousemove', e => {
+  const t = e.target.closest && e.target.closest('[data-tip]');
+  if (!t) { tip.style.display = 'none'; return; }
+  tip.textContent = t.dataset.tip; tip.style.display = 'block';
+  const r = tip.getBoundingClientRect();
+  tip.style.left = Math.min(e.clientX + 14, innerWidth - r.width - 8) + 'px';
+  tip.style.top = Math.min(e.clientY + 14, innerHeight - r.height - 8) + 'px';
+});
+
+/* tabs */
+const built = {}, render = {flow, timeline, matrix, table, network, unmatched};
+function show(v) {
+  if (!render[v]) v = 'flow';
+  document.querySelectorAll('.view').forEach(e => e.classList.toggle('on', e.id === v));
+  document.querySelectorAll('nav button').forEach(b => b.classList.toggle('on', b.dataset.v === v));
+  if (!built[v]) { built[v] = 1; render[v](); }
+  history.replaceState(null, '', '#' + v);
+}
+document.querySelectorAll('nav button').forEach(b => b.onclick = () => show(b.dataset.v));
+
+/* left-to-right columns: drop back edges (cycles: a script that reads what it writes, steps that read each
+   other's outputs), then longest-path layering in topological order. ids: list, edges: [{from, to}] */
+function layers(ids, edges) {
+  const out = {}, state = {}, back = new Set();
+  edges.forEach((e, i) => (out[e.from] = out[e.from] || []).push(i));
+  for (const id of ids) {
+    if (state[id]) continue;
+    const st = [[id, 0]]; state[id] = 1;
+    while (st.length) {
+      const top = st[st.length - 1], ei = (out[top[0]] || [])[top[1]++];
+      if (ei === undefined) { state[top[0]] = 2; st.pop(); continue; }
+      const to = edges[ei].to;
+      if (state[to] === 1) back.add(ei); else if (!state[to]) { state[to] = 1; st.push([to, 0]); }
+    }
+  }
+  const DE = edges.filter((e, i) => !back.has(i)), indeg = {}, lay = {}, dout = {};
+  ids.forEach(id => { indeg[id] = 0; lay[id] = 0; });
+  DE.forEach(e => { indeg[e.to]++; (dout[e.from] = dout[e.from] || []).push(e.to); });
+  const q = ids.filter(id => !indeg[id]);
+  while (q.length) { const u = q.shift(); for (const v of dout[u] || []) { lay[v] = Math.max(lay[v], lay[u] + 1); if (!--indeg[v]) q.push(v); } }
+  return lay;
+}
+
+/* columns from layers(); inside a column, sort by the mean height of what feeds you (barycenter), then tie() */
+function place(items, E, {W, H, GX, GY, PAD}, tie) {
+  const lay = layers(items.map(n => n.id), E), cols = [], pos = {}, preds = {};
+  items.forEach(n => (cols[lay[n.id]] = cols[lay[n.id]] || []).push(n));
+  E.forEach(e => (preds[e.to] = preds[e.to] || []).push(e.from));
+  let maxRows = 0;
+  cols.forEach((col, c) => {
+    if (!col) return;
+    const bc = n => { const p = (preds[n.id] || []).filter(x => pos[x]).map(x => pos[x].y); return p.length ? p.reduce((a, b) => a + b) / p.length : 1e9; };
+    col.sort((a, b) => bc(a) - bc(b) || tie(a, b));
+    col.forEach((n, i) => pos[n.id] = {x: PAD + c * (W + GX), y: PAD + i * (H + GY)});
+    maxRows = Math.max(maxRows, col.length);
+  });
+  return {pos, Wn: PAD * 2 + Math.max(W, cols.length * (W + GX) - GX), Hn: PAD * 2 + Math.max(H, maxRows * (H + GY))};
+}
+/* fit the map into its card, but never shrink text below ~45% (then scroll instead); returns the scale */
+function sizeSvg(svg, card, Wn, Hn, fit) {
+  const s = Math.min(1, (card.clientWidth - 4) / Wn), scale = fit && s >= 0.45 ? s : 1;
+  svg.setAttribute('viewBox', `0 0 ${Wn} ${Hn}`);
+  svg.setAttribute('width', Wn * scale);
+  svg.setAttribute('height', Hn * scale);
+  return scale;
+}
+const curve = (a, b, W, H) => { const x1 = a.x + W, y1 = a.y + H / 2, x2 = b.x - 2, y2 = b.y + H / 2, m = (x1 + x2) / 2;
+  return `M${x1},${y1}C${m},${y1} ${m},${y2} ${x2},${y2}`; };
+const ARROW = () => `<defs><marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerUnits="userSpaceOnUse" markerWidth="9" markerHeight="9" orient="auto"><path d="M0,0L10,5L0,10z" fill="${css('--mute')}"/></marker></defs>`;
+
+/* folder groups: files with "grp" belong to a group node. collapse=true shows the group, false the files */
+function foldGraph(collapse) {
+  if (!collapse) {
+    const grp = new Set(G.nodes.filter(n => n.group === 'group').map(n => n.id));
+    return {nodes: G.nodes.filter(n => !grp.has(n.id)), edges: G.edges.filter(e => !grp.has(e.from) && !grp.has(e.to))};
+  }
+  const to = id => G.nodes[id].grp ?? id, seen = new Set(), edges = [];
+  for (const e of G.edges) {
+    const f = to(e.from), t = to(e.to), k = `${f}>${t}>${e.kind}`;
+    if (f !== t && !seen.has(k)) { seen.add(k); edges.push({from: f, to: t, kind: e.kind}); }
+  }
+  return {nodes: G.nodes.filter(n => n.grp === undefined), edges};
+}
+
+/* ---------- flow: layered, static, lineage highlight ---------- */
+function flow() {
+  const W = 230, H = 30, GX = 70, GY = 8, PAD = 16;
+  const dirs = [...new Set(G.nodes.filter(n => n.group === 'script').map(scriptDir))].sort();
+  $('sel').innerHTML = ['(all)', ...dirs].map(d => `<option>${esc(d)}</option>`).join('');
+  $('sel').value = dirs.find(d => /deconv/i.test(d)) || '(all)';
+  $('sel').onchange = draw;
+  let N, E, pos, scale = 1, fit = true;
+  $('fit').onclick = () => { fit = !fit; $('fit').textContent = fit ? '100%' : 'Fit to width'; draw(); };
+  $('fold').onchange = draw;
+
+  function draw() {
+    const F = foldGraph($('fold').checked);
+    let keep = new Set(F.nodes.map(n => n.id)); E = F.edges;
+    if ($('sel').value !== '(all)') {
+      const sc = new Set(F.nodes.filter(n => n.group === 'script' && scriptDir(n) === $('sel').value).map(n => n.id));
+      keep = new Set(sc);
+      E.forEach(e => { if (sc.has(e.from)) keep.add(e.to); if (sc.has(e.to)) keep.add(e.from); });
+    }
+    E = E.filter(e => keep.has(e.from) && keep.has(e.to));
+    N = F.nodes.filter(n => keep.has(n.id));
+    const P = place(N, E, {W, H, GX, GY, PAD}, (a, b) => a.group.localeCompare(b.group) || a.label.localeCompare(b.label));
+    pos = P.pos;
+    let o = '<g id="edges">';
+    E.forEach((e, i) => {
+      const dash = e.kind === 'reads' ? '5 4' : e.kind === 'source' ? '2 3' : '';
+      o += `<path class="ed" data-i="${i}" d="${curve(pos[e.from], pos[e.to], W, H)}" stroke="${css(ECOL[e.kind])}" stroke-dasharray="${dash}" marker-end="url(#ar)"/>`;
+    });
+    o += '</g><g id="nodes">';
+    N.forEach(n => {
+      const p = pos[n.id], c = css(NCOL[n.group]);
+      o += `<g class="nd" data-id="${n.id}" data-tip="${esc(n.title)}"><rect class="b" x="${p.x}" y="${p.y}" width="${W}" height="${H}" rx="6"/>` +
+           `<rect x="${p.x}" y="${p.y}" width="5" height="${H}" rx="2" fill="${c}"/>` +
+           (n.stale ? `<circle cx="${p.x + W - 10}" cy="${p.y + H / 2}" r="4" fill="${css('--stale')}"/>` : '') +
+           `<text x="${p.x + 12}" y="${p.y + 19}"${n.group === 'script' ? ' font-weight="600"' : ''}>${esc(n.label.length > 28 ? n.label.slice(0, 11) + '…' + n.label.slice(-16) : n.label)}</text></g>`;
+    });
+    o += '</g>';
+    scale = sizeSvg($('fsvg'), $('fcard'), P.Wn, P.Hn, fit);
+    $('fsvg').innerHTML = ARROW() + o +
+      (N.length ? '' : `<text x="20" y="30" class="mute">nothing linked in this step</text>`);
+  }
+
+  function lineage(id) {
+    const up = {}, dn = {};
+    E.forEach(e => { (dn[e.from] = dn[e.from] || []).push(e.to); (up[e.to] = up[e.to] || []).push(e.from); });
+    const seen = new Set([id]);
+    for (const adj of [up, dn]) { const st = [id]; while (st.length) for (const x of adj[st.pop()] || []) if (!seen.has(x)) { seen.add(x); st.push(x); } }
+    return seen;
+  }
+  function highlight(id) {
+    const keep = id == null ? null : lineage(id);
+    document.querySelectorAll('#fsvg .nd').forEach(g => g.classList.toggle('dim', keep && !keep.has(+g.dataset.id)));
+    document.querySelectorAll('#fsvg .ed').forEach(p => { const e = E[+p.dataset.i], on = keep && keep.has(e.from) && keep.has(e.to);
+      p.classList.toggle('dim', keep && !on); p.classList.toggle('hl', !!on); });
+  }
+  $('fsvg').onclick = ev => { const g = ev.target.closest('.nd'); select(g ? +g.dataset.id : null); };
+  function select(id) {  // trace + details panel; the map is re-fitted when the panel opens or closes
+    const was = $('det').hidden;
+    details(id);
+    if ($('det').hidden !== was) draw();
+    highlight(id == null ? null : shown(id));
+  }
+  // the box that shows a node: its folder group when large folders are grouped
+  const shown = id => $('fold').checked && G.nodes[id].grp !== undefined ? G.nodes[id].grp : id;
+  flow.open = (step, id) => {  // used by other tabs
+    $('sel').value = [...$('sel').options].some(o => o.value === step) ? step : '(all)';
+    draw(); go(id);
+  };
+  function go(id) {  // trace + details; switch step if the box is not on the map
+    const b = shown(id);
+    if (!pos[b]) return flow.open(flowStep(id), id);
+    select(id);
+    $('fcard').scrollTo({left: pos[b].x * scale - 40, top: pos[b].y * scale - 80, behavior: 'smooth'});
+  }
+
+  function details(id) {
+    const d = $('det');
+    if (id == null) { d.hidden = true; return; }
+    const n = G.nodes[id], p = PATH(n), abs = p.startsWith('/') ? p : D.root + '/' + p;
+    const link = i => `<a data-go="${i}" data-tip="${esc(PATH(G.nodes[i]))}">${esc(G.nodes[i].label)}</a>`;
+    const list = (ids, none, max = 40) => ids.length ? '<ul>' + ids.slice(0, max).map(i => `<li>${link(i)}${G.nodes[i].stale ? ' <span class="warn">⚠</span>' : ''}</li>`).join('') +
+      (ids.length > max ? `<li class="p">+ ${ids.length - max} more</li>` : '') + '</ul>' : `<div class="p">${none}</div>`;
+    const into = i => [...new Set(G.edges.filter(e => e.to === i && e.kind !== 'writes').map(e => e.from))];
+    const from = (i, k) => [...new Set(G.edges.filter(e => e.from === i && (k ? e.kind === k : e.kind !== 'writes')).map(e => e.to))];
+    let h = `<button class="x" data-tip="close">×</button><h3>${esc(n.label)}</h3><div class="p">${esc(p)}</div>`;
+    if (n.group !== 'group')
+      h += `<div><a href="${esc(encodeURI('file://' + abs))}" target="_blank">open</a> · <a data-copy="${esc(abs)}">copy path</a></div>`;
+    if (n.group === 'script') {
+      h += `<div class="p">${esc(n.title.split('\n')[1] || '')}</div>`;
+      h += `<div class="sec">writes</div>` + list(from(id, 'writes').filter(i => G.nodes[i].grp === undefined), 'nothing found');
+      h += `<div class="sec">reads</div>` + list(into(id), 'nothing found');
+    } else if (n.group === 'group') {
+      const fs = G.nodes.filter(m => m.grp === id).map(m => m.id);
+      h += `<div class="sec">written by</div>` + list(WRITER[id] !== undefined ? [WRITER[id]] : [], '')
+         + `<div class="sec">${fs.length} files</div>` + list(fs, '', 1e9);
+    } else {
+      const r = ROW[p];
+      if (r) {
+        h += `<div class="p">modified ${esc(day(r.m))}</div>`;
+        if (staleBy(r)) h += `<div class="warn">⚠ script edited ${ago(staleBy(r))} after this file was written: possibly stale</div>`;
+        r.s.forEach((s, i) => {
+          h += `<div class="sec">made by</div>${NODE[s] !== undefined ? link(NODE[s]) : esc(s)} ${chip(r.c[i])}` +
+               `<div class="p">script last change ${esc(day(r.sm[i]))}</div>` +
+               ((r.x || [])[i] ? `<pre data-tip="the code that links the script to this file">${esc(r.x[i])}</pre>` : '');
+        });
+        const ins = [...new Set(r.s.flatMap(s => NODE[s] !== undefined ? into(NODE[s]) : []))];
+        h += `<div class="sec">inputs of ${r.s.length > 1 ? 'these scripts' : 'that script'}</div>` + list(ins, 'none found');
+      } else if (n.group === 'input') h += `<div class="p">read, but not written by any scanned script</div>`;
+      h += `<div class="sec">read by</div>` + list(from(id), 'no script found');
+    }
+    d.innerHTML = h; d.hidden = false;
+  }
+  $('det').onclick = ev => {
+    const a = ev.target.closest('a[data-go], a[data-copy], .x');
+    if (!a) return;
+    if (a.dataset.go) go(+a.dataset.go);
+    else if (a.dataset.copy) navigator.clipboard?.writeText(a.dataset.copy).then(() => a.textContent = 'copied', () => {});
+    else select(null);
+  };
+  $('fq').oninput = () => {
+    const t = $('fq').value.toLowerCase(); if (t.length < 2) return highlight(null);
+    const n = N.find(n => n.title.toLowerCase().includes(t));
+    if (!n) return;
+    go(n.id);
+  };
+  draw();
+}
+
+/* ---------- timeline ---------- */
+function timeline() {
+  if (!D.rows.length) { $('tsvg').outerHTML = '<div class="empty">no matched outputs</div>'; return; }
+  $('tstale').onchange = drawTimeline;
+  $('tsvg').onclick = ev => { const c = ev.target.closest('[data-o]'); if (c) openPath(c.dataset.o); };
+  drawTimeline();
+}
+function drawTimeline() {
+  const by = {};
+  D.rows.filter(r => !$('tstale').checked || staleBy(r)).forEach(r => (by[r.s[0]] = by[r.s[0]] || []).push(r));
+  const smod = Object.fromEntries(D.scripts.map(s => [s.p, s.m]));
+  const names = Object.keys(by).sort(), L = 330, RH = 20, PW = Math.max(700, innerWidth - L - 120), T = 34;
+  const t = s => new Date(s).getTime();
+  const all = D.rows.map(r => t(r.m)).concat(names.map(n => t(smod[n])).filter(x => !isNaN(x)));
+  const t0 = Math.min(...all), t1 = Math.max(...all), span = Math.max(t1 - t0, 864e5);
+  const x = ms => L + (ms - t0) / span * PW;
+  let o = '';
+  for (let i = 0; i <= 8; i++) {
+    const ms = t0 + span * i / 8, xx = x(ms);
+    o += `<line class="axis" x1="${xx}" x2="${xx}" y1="${T - 8}" y2="${T + names.length * RH}"/><text x="${xx}" y="${T - 14}" font-size="10.5" text-anchor="middle" class="mute">${new Date(ms).toISOString().slice(0, 10)}</text>`;
+  }
+  names.forEach((nm, i) => {
+    const y = T + i * RH + RH / 2, sm = t(smod[nm]);
+    o += `<g data-tip="${esc(nm)}\nlast change ${esc(smod[nm] || '?')}\n${by[nm].length} output(s)"><rect x="0" y="${y - RH / 2}" width="${L + PW}" height="${RH}" fill="transparent"/>` +
+         `<text class="lbl" x="${L - 10}" y="${y + 4}" text-anchor="end">${esc(nm.length > 46 ? '…' + nm.slice(-45) : nm)}</text></g>` +
+         `<line class="axis" x1="${L}" x2="${L + PW}" y1="${y}" y2="${y}" stroke-dasharray="2 4"/>`;
+    if (!isNaN(sm)) o += `<rect x="${x(sm) - 1.5}" y="${y - 8}" width="3" height="16" rx="1" style="fill:var(--ink)"/>`;
+    by[nm].forEach(r => {
+      const gap = staleBy(r), stale = gap > 0;
+      o += `<circle cx="${x(t(r.m))}" cy="${y}" r="4.5" fill="${css(stale ? '--stale' : '--fresh')}" fill-opacity=".7" stroke="${css('--panel')}"` +
+           ` data-o="${esc(r.o)}" data-tip="${esc(r.o)}\nmodified ${r.m}${stale ? `\n⚠ script edited ${ago(gap)} later: possibly stale` : ''}"/>`;
+    });
+  });
+  $('tsvg').setAttribute('width', L + PW + 30);
+  $('tsvg').setAttribute('height', T + names.length * RH + 16);
+  $('tsvg').innerHTML = names.length ? o : '<text x="20" y="30" class="mute">nothing is possibly stale</text>';
+}
+
+/* ---------- matrix ---------- */
+function matrix() {
+  if (!D.rows.length) { $('msvg').outerHTML = '<div class="empty">no matched outputs</div>'; return; }
+  const cnt = {}, rs = new Set(), cs = new Set();
+  D.rows.forEach(r => { const c = dirOf(r.o); cs.add(c); r.s.forEach(s => { rs.add(s); cnt[s + '|' + c] = (cnt[s + '|' + c] || 0) + 1; }); });
+  const short = c => { const p = c.split('/').slice(-2).join('/'); return p.length > 32 ? '…' + p.slice(-31) : p; };
+  const R = [...rs].sort(), C = [...cs].sort(), cell = 18, L = 330;
+  const T = 24 + Math.max(...C.map(c => short(c).length)) * 5.4;  // room for the rotated column labels
+  let o = '';
+  C.forEach((c, j) => {
+    const x = L + j * cell + cell / 2;
+    o += `<line class="axis" x1="${x}" x2="${x}" y1="${T}" y2="${T + R.length * cell}" stroke-dasharray="2 4"/>` +
+         `<g data-tip="${esc(c)}"><text transform="translate(${x + 4},${T - 8}) rotate(-55)" class="lbl">${esc(short(c))}</text></g>`;
+  });
+  R.forEach((s, i) => {
+    const y = T + i * cell + cell / 2;
+    o += `<g data-tip="${esc(s)}"><text class="lbl" x="${L - 10}" y="${y + 4}" text-anchor="end">${esc(s.length > 46 ? '…' + s.slice(-45) : s)}</text></g>` +
+         `<line class="axis" x1="${L}" x2="${L + C.length * cell}" y1="${y}" y2="${y}" stroke-dasharray="2 4"/>`;
+    C.forEach((c, j) => { const n = cnt[s + '|' + c];
+      if (n) o += `<circle cx="${L + j * cell + cell / 2}" cy="${y}" r="${Math.min(8, 2.5 + 1.4 * Math.sqrt(n))}" fill="${css('--file')}" fill-opacity=".8" data-tip="${esc(s)}\n→ ${esc(c)}\n${n} file(s)"/>`; });
+  });
+  $('msvg').setAttribute('width', L + C.length * cell + 60);
+  $('msvg').setAttribute('height', T + R.length * cell + 16);
+  $('msvg').innerHTML = o;
+}
+
+/* ---------- table ---------- */
+const EVID = {  // label -> [strength, explanation]; strongest first, mirrors RANK in cli.py
+  'write': ['strong', 'the script writes to exactly this path'],
+  'stem-rule': ['strong', 'rendered report next to its .Rmd/.qmd/.ipynb'],
+  'name': ['strong', 'the script passes this file name to a writing function, e.g. save_table(df, "de_table")'],
+  'write-glob': ['medium', 'the script writes to a path that matches with wildcards (loop or run-time name)'],
+  'lang-write': ['medium', 'R fallback: a known R write function (e.g. pdf(), png()) with this exact path'],
+  'lang-glob': ['medium', 'R fallback: a known R write function, matched with wildcards'],
+  'mention': ['weak', 'the path appears in the script, but no read/write call was recognised'],
+  'mention-glob': ['weak', 'the path appears with wildcards, but no read/write call was recognised']};
+const chip = c => `<span class="chip ${(EVID[c] || ['weak'])[0]}" data-tip="${esc((EVID[c] || ['', c])[1])}">${esc(c)}</span>`;
+function table() {
+  $('cf').innerHTML = '<option value="">any evidence</option>' + Object.keys(EVID).map(k => `<option>${k}</option>`).join('');
+  let key = 'm', dir = -1;
+  const val = (r, k) => k === 's' ? r.s.join(' ') : k === 'c' ? r.c[0] : k === 'sm' ? (r.sm[0] || '') : r[k];
+  const heads = [['o', 'output'], ['s', 'source script(s)'], ['c', 'evidence'], ['m', 'output modified'], ['sm', 'script last change']];
+  function draw() {
+    const q = $('q').value.toLowerCase(), cf = $('cf').value, sf = $('sf').value;
+    const rows = D.rows.filter(r => (!cf || r.c.includes(cf)) && (!sf || (sf === 'stale') === !!staleBy(r))
+                                    && (!q || (r.o + ' ' + r.s.join(' ')).toLowerCase().includes(q)))
+      .sort((a, b) => val(a, key) < val(b, key) ? -dir : val(a, key) > val(b, key) ? dir : 0);
+    $('cnt').textContent = rows.length.toLocaleString() + ' rows' + (rows.length > 2000 ? ' (first 2000 shown)' : '');
+    $('tb').innerHTML = '<tr>' + heads.map(([k, l]) => `<th data-k="${k}">${l}${key === k ? (dir > 0 ? ' ▲' : ' ▼') : ''}</th>`).join('') + '</tr>' +
+      rows.slice(0, 2000).map(r => `<tr data-o="${esc(r.o)}"><td class="p">${esc(r.o)}</td><td class="p">${r.s.map(esc).join('<br>')}</td>` +
+        `<td>${r.c.map(chip).join('<br>')}</td>` + (staleBy(r)
+          ? `<td class="stale" data-tip="the script was edited ${ago(staleBy(r))} after this file was written: possibly stale">⚠ ${day(r.m)}<br><small>script edited ${ago(staleBy(r))} later</small></td>`
+          : `<td>${day(r.m)}</td>`) + `<td>${r.sm.map(day).join('<br>')}</td></tr>`).join('');
+    $('tb').querySelectorAll('th').forEach(th => th.onclick = () => { dir = key === th.dataset.k ? -dir : 1; key = th.dataset.k; draw(); });
+  }
+  $('q').oninput = $('cf').onchange = $('sf').onchange = draw;
+  $('tb').onclick = ev => { const tr = ev.target.closest('tr[data-o]'); if (tr) openPath(tr.dataset.o); };
+  draw();
+}
+
+/* ---------- steps overview: one box per script folder; expand a step into its scripts ---------- */
+function network() {
+  const GN = G.nodes, expanded = new Set(), steps = [...new Set(GN.filter(n => n.group === 'script').map(scriptDir))];
+  // a node's boxes: its step when collapsed, its script when expanded. Files fold into every script that writes them.
+  const box = sid => expanded.has(scriptDir(GN[sid])) ? 'S:' + sid : 'C:' + scriptDir(GN[sid]);
+  const unitsOf = id => GN[id].group === 'script' ? [box(id)]
+    : WRITERS[id] ? [...new Set(WRITERS[id].map(box))] : ['C:(external inputs)'];
+  const BW = 215, BH = 44;
+  function draw() {
+    const U = {}, W = {};
+    for (const n of GN) for (const u of unitsOf(n.id)) {
+      const x = U[u] = U[u] || {id: u, scripts: 0, files: 0, stale: 0, step: u[0] === 'C' ? u.slice(2) : scriptDir(GN[+u.slice(2)])};
+      if (n.group === 'script') x.scripts++;
+      else if (n.group !== 'group') { x.files++; if (n.stale) x.stale++; }
+    }
+    const hide = u => !$('ninp').checked && u === 'C:(external inputs)';
+    for (const u of Object.keys(U)) if (hide(u)) delete U[u];
+    for (const e of G.edges) {
+      if (e.kind === 'writes') continue;
+      for (const a of unitsOf(e.from)) for (const b of unitsOf(e.to))
+        if (a !== b && !hide(a) && !hide(b)) W[a + '>' + b] = (W[a + '>' + b] || 0) + 1;
+    }
+    const items = Object.values(U), E = Object.entries(W).map(([k, n]) => { const [from, to] = k.split('>'); return {from, to, n}; });
+    const name = x => x.id[0] === 'C' ? (x.step === '.' ? '(project root)' : x.step) : GN[+x.id.slice(2)].label;
+    const {pos, Wn, Hn} = place(items, E, {W: BW, H: BH, GX: 60, GY: 12, PAD: 16}, (a, b) => name(a).localeCompare(name(b)));
+    const mx = Math.max(1, ...E.map(e => e.n));
+    let o = '';
+    E.forEach(e => o += `<path class="ed" d="${curve(pos[e.from], pos[e.to], BW, BH)}" stroke="${css('--read')}" style="stroke-width:${1 + 7 * Math.sqrt(e.n / mx)}" marker-end="url(#ar)" data-tip="${e.n} file link${e.n === 1 ? '' : 's'}"/>`);
+    items.forEach(x => {
+      const p = pos[x.id], isStep = x.id[0] === 'C', input = x.step === '(external inputs)', nm = name(x);
+      const nf = `${x.files} file${x.files === 1 ? '' : 's'}`;
+      const facts = (isStep && !input ? `${x.scripts} script${x.scripts === 1 ? '' : 's'} · ${nf}` : nf) + (x.stale ? ` · ⚠ ${x.stale} stale` : '');
+      const c = css(input ? '--input' : '--script');
+      const tip = isStep ? (input ? 'files read but not written by any script' : `${nm}\nclick to expand into its scripts`)
+                         : `${PATH(GN[+x.id.slice(2)])}\nclick to open in Flow`;
+      o += `<g class="nd" data-u="${esc(x.id)}" data-tip="${esc(tip)}"><rect class="b" x="${p.x}" y="${p.y}" width="${BW}" height="${BH}" rx="7"` +
+           (isStep ? ` style="stroke:${c};stroke-width:1.6"` : '') + `/><rect x="${p.x}" y="${p.y}" width="5" height="${BH}" rx="2" fill="${c}"/>` +
+           `<text x="${p.x + 13}" y="${p.y + 19}" font-weight="600" style="font-size:13px">${esc(nm.length > 30 ? '…' + nm.slice(-29) : nm)}</text>` +
+           `<text x="${p.x + 13}" y="${p.y + 35}"${x.stale ? ` style="fill:${css('--stale')}"` : ' class="mute"'}>${esc(facts)}</text></g>`;
+    });
+    sizeSvg($('nsvg'), $('ncard'), Wn, Hn, true);
+    $('nsvg').innerHTML = ARROW() + o + (items.length ? '' : '<text x="20" y="30" class="mute">no steps</text>');
+    network.count = items.length;  // for tests
+  }
+  $('nsvg').onclick = ev => {
+    const g = ev.target.closest('.nd');
+    if (!g) return;
+    const u = g.dataset.u;
+    if (u[0] === 'S') { const id = +u.slice(2); show('flow'); return flow.open(scriptDir(GN[id]), id); }
+    const st = u.slice(2);
+    if (st === '(external inputs)') return;
+    expanded.has(st) ? expanded.delete(st) : expanded.add(st);
+    draw();
+  };
+  $('nexp').onclick = () => { steps.forEach(st => expanded.add(st)); draw(); };
+  $('ncol').onclick = () => { expanded.clear(); draw(); };
+  $('ninp').onchange = draw;
+  draw();
+}
+
+/* ---------- unmatched: folder tree of outputs without a script (counts only), children drawn on open ---------- */
+function unmatched() {
+  const root = {name: '', n: 0, own: 0, kids: {}};
+  for (const [d, c] of Object.entries(D.unm || {})) {
+    const parts = d === '.' ? [] : d.startsWith('/') ? ['/', ...d.slice(1).split('/')] : d.split('/');
+    let t = root; t.n += c;
+    for (const p of parts) { t = t.kids[p] = t.kids[p] || {name: p, n: 0, own: 0, kids: {}}; t.n += c; }
+    t.own += c;
+  }
+  if (!root.n) { $('utree').innerHTML = '<div class="empty">every output was traced to a script</div>'; return; }
+  const total = root.n, J = (a, b) => a === '' ? b : a === '/' ? '/' + b : a + '/' + b;
+  // one row per folder; chains of single sub-folders without own files are merged into one row
+  function node(t, path) {
+    let name = t.name;
+    while (!t.own && Object.keys(t.kids).length === 1) { t = Object.values(t.kids)[0]; name = J(name, t.name); path = J(path, t.name); }
+    return {t, name, path};
+  }
+  function row({t, name, path}) {
+    const kids = Object.values(t.kids), leaf = !kids.length, shown = path || '.';
+    const tip = `${shown}\n${t.n.toLocaleString()} unmatched file(s)` + (t.own && kids.length ? `, ${t.own.toLocaleString()} directly in it` : '') +
+                (shown === '/' ? '' : `\nto skip it: add "${shown}" to "exclude" in fms.json`);
+    return `<details data-p="${esc(path)}"><summary class="${leaf ? 'leaf' : ''}" data-tip="${esc(tip)}"><span class="nm">${esc(name)}${leaf || name.endsWith('/') ? '' : '/'}</span>` +
+           `<span class="bar"><i style="width:${(100 * t.n / total).toFixed(1)}%"></i></span><span class="n">${t.n.toLocaleString()}</span></summary></details>`;
+  }
+  const byPath = {};
+  function list(t, path) {
+    return Object.values(t.kids).sort((a, b) => b.n - a.n).map(k => {
+      const r = node(k, J(path, k.name)); byPath[r.path] = r.t; return row(r);
+    }).join('') + (t.own && Object.keys(t.kids).length ? `<div class="p mute" style="margin:2px 0 4px 36px">${t.own.toLocaleString()} files directly here</div>` : '');
+  }
+  const top = node(root, '');
+  byPath[top.path] = top.t;
+  $('utree').innerHTML = list(top.t, top.path);
+  $('utree').addEventListener('toggle', ev => {
+    const d = ev.target;
+    if (d.open && !d.dataset.done) { d.dataset.done = 1; d.insertAdjacentHTML('beforeend', list(byPath[d.dataset.p], d.dataset.p)); }
+  }, true);
+}
+
+show(location.hash.slice(1) || 'flow');
+</script>

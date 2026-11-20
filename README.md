@@ -20,7 +20,7 @@
 <p align="center">
   <img src="docs/img/flow.png" alt="Flow tab of the report: clicking figures/qc/pca.png highlights its upstream chain from the raw data through 01_load.R, 02_model.Rmd and 03_figures.R; the details panel shows the ggsave() line that wrote it and warns that the script was edited 30 days after the figure, so it is possibly stale">
   <br><sub>The report for <a href="examples/r-project">examples/r-project</a>: one click on a figure shows the script and line that made it, and that it is out of date.
-  Open the generated report: <a href="docs/example-report/index.html">docs/example-report/</a> (download it; GitHub shows HTML as source).</sub>
+  <a href="https://alexg9010.github.io/findMySource/example-report/">Open the live example report</a>.</sub>
 </p>
 
 Coming back to an analysis after months away, or preparing a figure for a paper,
