@@ -103,6 +103,13 @@ def test_configured_write_function_paths():
     assert got == {"results": "", "scripts/results/new.png": "scripts/a.R write-glob",
                    "figs/f.png": "scripts/b.py write-glob"}, got
 
+    # a wildcard folder name: one expansion is a file, another a folder; both count
+    got = links({"fms.json": '{"write_functions": {"convert_all": 0}}',
+                 "a.R": 'for (b in batches) convert_all(file.path("plots", b, "converted"))\n',
+                 "plots/run1/converted/new.png": "", "plots/run2/converted": ""})
+    got.pop("fms.json")
+    assert got == {"plots/run1/converted/new.png": "a.R write-glob", "plots/run2/converted": "a.R write-glob"}, got
+
 
 def table():
     return "   | evidence | meaning |\n   |---|---|\n" + "".join(

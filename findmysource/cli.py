@@ -586,14 +586,13 @@ def scan(a):
         of that name, else the files directly in that folder; a candidate with neither falls through to the next"""
         cands = resolve(p, s)
         def one(c):
-            if folder and c.endswith("/*"):
-                hit, conf = idx.match(c[:-2])  # an existing file without an extension
-                if hit: return hit, conf
+            if not (folder and c.endswith("/*")): return idx.match(c)
+            files, conf = idx.match(c[:-2])  # an existing file without an extension
+            if files and "*" not in c[:-2]: return files, conf  # a literal name: that file, not a folder
+            r = to_regex(c[:-2])  # the resolved folder: symlinks and wildcards as in the candidate itself
             hit, conf = idx.match(c)
-            if folder and c.endswith("/*"):
-                r = to_regex(c[:-2])  # the resolved folder: symlinks and wildcards as in the candidate itself
-                hit = [f for f in hit if r.fullmatch(f.rpartition("/")[0])]
-            return hit, conf
+            # a wildcard name stands for several paths: some may be files, others folders
+            return files + [f for f in hit if r.fullmatch(f.rpartition("/")[0])], conf
         for c in cands[:-1] if len(cands) > 1 else cands:
             hit, conf = one(c)
             if hit: return hit, conf
