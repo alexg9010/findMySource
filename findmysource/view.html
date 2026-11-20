@@ -113,8 +113,8 @@
 
 <section id="table" class="view">
   <div class="tools"><input id="q" placeholder="filter output or script…" size="34" data-tip="click a row to show it in Flow">
-    <select id="cf"><option value="">any evidence</option></select>
-    <select id="sf"><option value="">any date</option><option value="stale">possibly stale</option><option value="fresh">up to date</option></select>
+    <select id="cf" aria-label="evidence"><option value="">any evidence</option></select>
+    <select id="sf" aria-label="date status"><option value="">any date</option><option value="stale">possibly stale</option><option value="fresh">up to date</option></select>
     <span id="cnt"></span></div>
   <div class="card"><table id="tb"></table></div>
 </section>
@@ -270,7 +270,7 @@ function flow() {
   $('sel').innerHTML = ['(all)', ...dirs].map(d => `<option>${esc(d)}</option>`).join('');
   $('sel').value = dirs.find(d => /deconv/i.test(d)) || '(all)';
   $('sel').onchange = draw;
-  let N, E, pos, scale = 1, fit = true;
+  let N, E, pos, scale = 1, fit = true, cur = null;  // cur: selected node, re-highlighted after every redraw
   $('fit').onclick = () => { fit = !fit; $('fit').textContent = fit ? '100%' : 'Fit to width'; draw(); };
   $('fold').onchange = draw;
 
@@ -303,6 +303,7 @@ function flow() {
     scale = sizeSvg($('fsvg'), $('fcard'), P.Wn, P.Hn, fit);
     $('fsvg').innerHTML = ARROW() + o +
       (N.length ? '' : `<text x="20" y="30" class="mute">nothing linked in this step</text>`);
+    if (cur != null && N.some(n => n.id === shown(cur))) highlight(shown(cur));
   }
 
   function lineage(id) {
@@ -321,6 +322,7 @@ function flow() {
   $('fsvg').onclick = ev => { const g = ev.target.closest('.nd'); select(g ? +g.dataset.id : null); };
   function select(id) {  // trace + details panel; the map is re-fitted when the panel opens or closes
     const was = $('det').hidden;
+    cur = id;
     details(id);
     if ($('det').hidden !== was) draw();
     highlight(id == null ? null : shown(id));
@@ -505,10 +507,11 @@ function network() {
       if (n.group === 'script') x.scripts++;
       else if (n.group !== 'group') { x.files++; if (n.stale) x.stale++; }
     }
-    const hide = u => !$('ninp').checked && u === 'C:(external inputs)';
+    const seen = new Set(), hide = u => !$('ninp').checked && u === 'C:(external inputs)';
     for (const u of Object.keys(U)) if (hide(u)) delete U[u];
     for (const e of G.edges) {
-      if (e.kind === 'writes') continue;
+      if (e.kind === 'writes' || seen.has(e.from + '>' + e.to)) continue;  // reads + source between the same pair count once
+      seen.add(e.from + '>' + e.to);
       for (const a of unitsOf(e.from)) for (const b of unitsOf(e.to))
         if (a !== b && !hide(a) && !hide(b)) W[a + '>' + b] = (W[a + '>' + b] || 0) + 1;
     }
