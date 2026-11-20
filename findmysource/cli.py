@@ -706,10 +706,12 @@ def scan(a):
     if unm: summary += ("\nmost unmatched (add to outputs/exclude in fms.json?):\n"
                         + "\n".join(f"  {n:6}  {d}/" for d, n in unm.most_common(5)))
     print(summary)
+    blob = json.dumps(parsed)  # the bulk of cache.json, so the write phase includes it
     tm["write"] = time.monotonic() - t0 - sum(tm.values())
     with open(cache_path, "w") as fh:
-        json.dump({"tool": tool, "fingerprint": fp, "generated": data["generated"], "summary": summary, "timings": tm,
-                   "scripts": parsed}, fh)
+        head = json.dumps({"tool": tool, "fingerprint": fp, "generated": data["generated"], "summary": summary,
+                           "timings": tm})
+        fh.write(head[:-1] + ', "scripts": ' + blob + "}")
 
 
 def cache_dir(root):
