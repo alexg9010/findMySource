@@ -504,9 +504,9 @@ function table() {
   const heads = [['o', 'output'], ['s', 'source script(s)'], ['c', 'evidence'], ['m', 'output modified'], ['sm', 'script last change']];
   function draw() {
     const q = $('q').value.toLowerCase(), cf = $('cf').value, sf = $('sf').value;
-    const script = D.scripts.some(s => s.p.toLowerCase() === q);  // a whole script path lists that script's outputs only
+    const script = D.scripts.some(s => s.p === $('q').value) && $('q').value;  // a whole script path (exact case) lists that script's outputs only
     const rows = D.rows.filter(r => (!cf || r.c.includes(cf)) && (!sf || (sf === 'stale') === !!staleBy(r))
-                                    && (!q || (script ? r.s.some(s => s.toLowerCase() === q) : (r.o + ' ' + r.s.join(' ')).toLowerCase().includes(q))))
+                                    && (!q || (script ? r.s.includes(script) : (r.o + ' ' + r.s.join(' ')).toLowerCase().includes(q))))
       .sort((a, b) => val(a, key) < val(b, key) ? -dir : val(a, key) > val(b, key) ? dir : 0);
     $('cnt').textContent = rows.length.toLocaleString() + ' rows' + (rows.length > 2000 ? ' (first 2000 shown)' : '');
     $('tb').innerHTML = '<tr>' + heads.map(([k, l]) => `<th data-k="${k}">${l}${key === k ? (dir > 0 ? ' ▲' : ' ▼') : ''}</th>`).join('') + '</tr>' +
