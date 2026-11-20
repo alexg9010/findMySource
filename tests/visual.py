@@ -45,7 +45,7 @@ def main():
         browser = p.chromium.launch(executable_path=os.environ.get("CHROME") or None, args=["--no-sandbox"])
         try:
 
-            def open_tab(tab, dark=False):
+            def open_tab(tab, dark=False, at=None):  # at: another report than the main one
                 page = browser.new_page(viewport={"width": 1500, "height": 950}, color_scheme="dark" if dark else "light")
                 label = tab + ("-dark" if dark else "")
                 page.on("console", lambda m: m.type == "error" and problems.append(f"{label}: console: {m.text}"))
@@ -53,7 +53,7 @@ def main():
                 page.on("requestfailed", lambda r: problems.append(f"{label}: request failed: {r.url} ({r.failure})"))
                 # the report must work offline: any request that leaves the file system fails (and is reported above)
                 page.route("**/*", lambda r: r.continue_() if r.request.url.startswith("file:") else r.abort())
-                page.goto(f"{url}#{tab}", wait_until="load")
+                page.goto(f"{at or url}#{tab}", wait_until="load")
                 return page
 
             def snap(page, name):
@@ -152,8 +152,7 @@ def main():
                 open(os.path.join(gproj, "out", f"f{i:02d}.csv"), "w").close()
             subprocess.run([sys.executable, "-m", "findmysource", "--out", os.path.join(gproj, "rep")], check=True,
                            cwd=gproj, env={**os.environ, "PYTHONPATH": REPO}, stdout=subprocess.DEVNULL)
-            page = browser.new_page(viewport={"width": 1500, "height": 950})
-            page.goto("file://" + os.path.join(gproj, "rep", "index.html") + "#flow", wait_until="load")
+            page = open_tab("flow", at="file://" + os.path.join(gproj, "rep", "index.html"))
             page.select_option("#sel", "(all)")
             page.click("#fsvg .nd:has-text('files)')")
             page.uncheck("#fold")
