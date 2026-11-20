@@ -172,6 +172,9 @@ def main():
                 f.write('{"scripts": ["scripts"], "outputs": ["out"]}')
             with open(os.path.join(gproj, "scripts", "make.R"), "w") as f:
                 f.write("".join(f'write.csv(x, "out/f{i:02d}.csv")\n' for i in range(16)))
+            with open(os.path.join(gproj, "scripts", "make.R.py"), "w") as f:  # its path contains make.R: the group must not list it
+                f.write('open("out/other.csv", "w")\n')
+            open(os.path.join(gproj, "out", "other.csv"), "w").close()
             for i in range(16):
                 open(os.path.join(gproj, "out", f"f{i:02d}.csv"), "w").close()
             subprocess.run([sys.executable, "-m", "findmysource", "--out", os.path.join(gproj, "rep")], check=True,
