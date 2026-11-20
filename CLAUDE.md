@@ -1,8 +1,8 @@
 # findMySource
 
 `fms` traces every output file of a research project back to the script that wrote it, by
-static analysis of the scripts as text, and writes `fms-report/` (manifest.tsv, graph.json,
-index.html). README.md describes behaviour for users; keep it in sync with the code.
+static analysis of the scripts as text, and writes `.fms/` (manifest.tsv, graph.json,
+index.html; the user cache if the project is not writable). README.md describes behaviour for users; keep it in sync with the code.
 
 ## Layout
 

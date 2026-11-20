@@ -1,7 +1,7 @@
 """findMySource (fms): trace every output of a project back to the script(s) that made it.
 
 Usage (run from the project root):
-    fms [--config fms.json] [--out fms-report]   scan, write the report, print a summary
+    fms [--config fms.json] [--out DIR]   scan, write the report (.fms/), print a summary
     fms <file>      where it came from (reads the last scan)
     fms <script>    what it writes and reads
     fms <folder>    possibly stale outputs in it (exit code 1 if any)
@@ -469,7 +469,13 @@ def scan(a):
     # build/ and dist/ hold copies of scripts (Python packaging); skipped for scripts only, outputs may live there
     script_exclude = exclude if "exclude" in cfg else exclude + ["build", "dist"]
     hidden = cfg.get("hidden", False)  # scan hidden folders too
-    out = os.path.realpath(a.out)
+    chosen, out = a.out, os.path.realpath(report_dir(root, a.out, write=True))
+    a.out = out
+    if out == os.path.join(root, ".fms"):  # ignores itself, so it is never committed; also restored on a rerun
+        os.makedirs(out, exist_ok=True)
+        if not os.path.exists(os.path.join(out, ".gitignore")): open(os.path.join(out, ".gitignore"), "w").write("*\n")
+    if not chosen and out == os.path.join(root, "fms-report"):
+        print("report in fms-report/ (fms < 0.3); delete it to move the report to .fms/", file=sys.stderr)
     aliases = {k: (v if v.startswith("/") else os.path.normpath(os.path.join(root, v)))
                for k, v in cfg.get("aliases", {}).items()}
     resolve = make_norm(aliases, root)
@@ -549,8 +555,10 @@ def scan(a):
     fp = hashlib.sha1(json.dumps([tool, cfg, root, [(s, info[s]["modified"], parsed[s]["key"]) for s in scripts]]).encode())
     for f in sorted(stat): fp.update(f"{f}\0{stat[f].st_mtime_ns}\0{stat[f].st_size}\n".encode())
     fp = fp.hexdigest()
-    if fp == old.get("fingerprint") and os.path.exists(os.path.join(a.out, "index.html")):
-        print(f"no changes since the last scan ({old.get('generated', '?')}); report is up to date ({took(t0)})", file=sys.stderr)
+    if fp == old.get("fingerprint") and all(os.path.exists(os.path.join(a.out, x)) for x in ("index.html", "manifest.tsv")):
+        try: os.utime(os.path.join(a.out, "manifest.tsv"))  # queries read the newest report: this one, even unchanged
+        except OSError: pass  # someone else's report (--out): only a hint for choosing between reports
+        print(f"no changes since the last scan ({old.get('generated', '?')}); report is up to date ({took(t0)}): {rel(os.path.join(a.out, 'index.html'))}", file=sys.stderr)
         print(old.get("summary", ""))
         return
     idx = Index(set(stat) | set(scripts))
@@ -684,8 +692,9 @@ def scan(a):
             "generated": datetime.datetime.now().astimezone().isoformat(timespec="minutes")}
     html = open(tpl_path).read().replace("__DATA__", json.dumps(data).replace("</", "<\\/"))
     open(os.path.join(a.out, "index.html"), "w").write(html)
-    print(f"{len(rows)}/{len(outputs)} outputs matched; {len(nodes)} nodes, {len(gedges)} edges -> {a.out}/"
-          f" in {took(t0)}", file=sys.stderr)
+    print(f"{len(rows)}/{len(outputs)} outputs matched; {len(nodes)} nodes, {len(gedges)} edges in {took(t0)}",
+          file=sys.stderr)
+    print(f"report: {rel(os.path.join(a.out, 'index.html'))}", file=sys.stderr)
     summary = (f"\n{len(rows)} of {len(outputs)} outputs traced to a script, {len(stale)} possibly stale"
                f" (fms <folder> lists them)")
     top = Counter(s for r in rows for s in r["s"]).most_common(5)
@@ -698,11 +707,36 @@ def scan(a):
                    "scripts": parsed}, fh)
 
 
+def cache_dir(root):
+    """per-user report folder for a project that is not writable, e.g. a shared one: ~/.cache/fms/<name>-<hash>"""
+    base = os.environ.get("XDG_CACHE_HOME") or os.path.expanduser("~/.cache")
+    root = os.path.realpath(root)  # the same project under any path that leads to it
+    return os.path.join(base, "fms", os.path.basename(root) + "-" + hashlib.sha1(root.encode()).hexdigest()[:8])
+
+
+def report_dir(root, out=None, write=False):
+    """--out if given. Else an existing report (.fms/, fms-report/ from before 0.3, the user cache): for a scan
+    the first one it can write to, for a query the newest one. Else .fms/, or the user cache if the project
+    is not writable."""
+    if out: return os.path.join(root, out)
+    found = [d for d in existing_reports(root) if not write or os.access(d, os.W_OK)]
+    if not write: found.sort(key=lambda d: -os.path.getmtime(os.path.join(d, "manifest.tsv"))
+                             if os.path.exists(os.path.join(d, "manifest.tsv")) else 0)
+    if found: return found[0]
+    fms = os.path.join(root, ".fms")  # an existing .fms/ that is not writable: the user cache
+    return fms if not os.path.exists(fms) and os.access(root, os.W_OK) else cache_dir(root)
+
+
+def existing_reports(root):
+    return [d for d in (os.path.join(root, ".fms"), os.path.join(root, "fms-report"), cache_dir(root)) if os.path.isdir(d)]
+
+
 def find_root(start, out):
     """first folder upwards with fms.json or a previous report, else None"""
     d = os.path.abspath(start)
     while True:
-        if os.path.exists(os.path.join(d, "fms.json")) or os.path.isdir(os.path.join(d, out)): return d
+        if os.path.exists(os.path.join(d, "fms.json")) or (os.path.isdir(os.path.join(d, out)) if out else existing_reports(d)):
+            return d
         if os.path.dirname(d) == d: return None
         d = os.path.dirname(d)
 
@@ -713,8 +747,8 @@ def query(a):
     target = os.path.abspath(a.path)
     # the project we are in; else the one the path is in (never scan a random folder)
     root = find_root(".", a.out) or find_root(target if os.path.isdir(target) else os.path.dirname(target), a.out)
-    if not root: return f"no fms project here: run fms in the project folder first (no fms.json or {a.out}/ found)"
-    out = os.path.join(root, a.out)
+    if not root: return "no fms project here: run fms in the project folder first (no fms.json or report found)"
+    out = a.out = report_dir(root, a.out)
     if not os.path.exists(os.path.join(out, "manifest.tsv")):
         print(f"no scan yet in {root}, scanning first", file=sys.stderr)
         cwd = os.getcwd(); os.chdir(root); scan(a); os.chdir(cwd)
@@ -792,7 +826,7 @@ def main():
         epilog="fms: scan and summarise.  fms <folder>: possibly stale outputs in it.  fms <file>: where it came from.")
     ap.add_argument("path", nargs="?", help="file or folder to ask about (needs a previous scan)")
     ap.add_argument("--config", default="fms.json")
-    ap.add_argument("--out", default="fms-report")
+    ap.add_argument("--out", help="report folder (default: .fms/ in the project, or ~/.cache/fms/ if not writable)")
     ap.add_argument("--version", action="version", version=__version__)
     a = ap.parse_args()
     if a.path: sys.exit(query(a))

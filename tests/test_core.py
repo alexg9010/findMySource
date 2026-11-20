@@ -124,6 +124,56 @@ def test_report_is_not_scanned_on_a_repeat_run():
         assert not any(p.startswith("fms-report/") for p in rows)
 
 
+def test_report_goes_to_a_hidden_folder_or_the_user_cache():
+    env = lambda cache: {**os.environ, "PYTHONPATH": REPO, "XDG_CACHE_HOME": cache}
+    fms = lambda cwd, cache, *args: subprocess.run([sys.executable, "-m", "findmysource", *args], cwd=cwd,
+                                                   env=env(cache), capture_output=True, text=True)
+    with tempfile.TemporaryDirectory() as t:
+        t = os.path.realpath(t)
+        for proj in ("rw", "ro"):
+            write(f"{t}/{proj}/results/answer.csv")
+            write(f"{t}/{proj}/make_results.py", 'save_table(data, "results/answer.csv")\n')
+        fms(f"{t}/rw", f"{t}/cache")
+        assert open(f"{t}/rw/.fms/.gitignore").read() == "*\n"  # ignores itself: never committed
+        assert "make_results.py" in fms(f"{t}/rw/results", f"{t}/cache", "answer.csv").stdout  # found from a subfolder
+        os.remove(f"{t}/rw/.fms/.gitignore")
+        assert "no changes" in fms(f"{t}/rw", f"{t}/cache").stderr
+        assert os.path.exists(f"{t}/rw/.fms/.gitignore")  # restored, also when nothing else changed
+
+        os.chmod(f"{t}/rw/.fms", 0o555)  # a report folder this user cannot write to
+        try:
+            write(f"{t}/rw/results/other.csv")
+            write(f"{t}/rw/make_other.py", 'save_table(data, "results/other.csv")\n')
+            assert fms(f"{t}/rw", f"{t}/cache").returncode == 0  # the scan goes to the user cache instead
+            assert any(os.path.exists(f"{t}/cache/fms/{d}/manifest.tsv") for d in os.listdir(f"{t}/cache/fms")
+                       if d.startswith("rw-"))
+            assert "make_other.py" in fms(f"{t}/rw", f"{t}/cache", "results/other.csv").stdout  # the newest report
+        finally:
+            os.chmod(f"{t}/rw/.fms", 0o755)
+        os.remove(f"{t}/rw/results/other.csv"); os.remove(f"{t}/rw/make_other.py")  # back to what .fms/ has
+        assert "no changes" in fms(f"{t}/rw", f"{t}/cache").stderr
+        assert "make_other.py" not in fms(f"{t}/rw", f"{t}/cache", "results/other.csv").stdout  # this scan, not the cache
+        # an unchanged report owned by someone else (--out): its time cannot be set, the scan still succeeds
+        import argparse, findmysource.cli as cli
+        def deny(*_): raise PermissionError("not the owner")
+        utime, cwd, os.utime = os.utime, os.getcwd(), deny
+        try:
+            os.chdir(f"{t}/rw")
+            cli.scan(argparse.Namespace(config="fms.json", out=".fms", path=None))
+        finally:
+            os.utime = utime; os.chdir(cwd)
+
+        os.chmod(f"{t}/ro", 0o555)  # e.g. a shared project folder of a colleague
+        try:
+            fms(f"{t}/ro", f"{t}/cache")
+            assert not os.path.exists(f"{t}/ro/.fms")
+            cached = [d for d in os.listdir(f"{t}/cache/fms") if d.startswith("ro-")]
+            assert len(cached) == 1 and os.path.exists(f"{t}/cache/fms/{cached[0]}/index.html")
+            assert "make_results.py" in fms(f"{t}/ro/results", f"{t}/cache", "answer.csv").stdout
+        finally:
+            os.chmod(f"{t}/ro", 0o755)
+
+
 def test_build_copies_of_scripts_are_skipped_but_outputs_there_are_kept():
     with tempfile.TemporaryDirectory() as root:
         write(f"{root}/results/answer.csv")
@@ -229,6 +279,7 @@ if __name__ == "__main__":
     test_generic()
     test_core()
     test_report_is_not_scanned_on_a_repeat_run()
+    test_report_goes_to_a_hidden_folder_or_the_user_cache()
     test_build_copies_of_scripts_are_skipped_but_outputs_there_are_kept()
     test_paths_into_another_clone_and_chunk_figures()
     test_chunk_folders_yield_to_reads_and_explicit_writers()
