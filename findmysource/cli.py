@@ -192,7 +192,8 @@ def generic_scan(code, v0=None, stmts=None, vars_only=False, writers=None):
                     a = (pos[w] if 0 <= w < len(pos) else None) if isinstance(w, int) else next(
                         (NAMED.sub("", x, count=1) for x in args if re.match(rf"\s*{re.escape(w)}\s*=(?!=)", x)), None)
                     p = evaluate(a, v) if a else "*"
-                    if len(p.replace("*", "")) >= 3 and "://" not in p:  # a folder: "/*" ends no other evidence
+                    if p.replace("*", "").strip("/") and "://" not in p:  # any explicit name, even "qc" or "."
+                        # no extension: maybe a folder ("/*" ends no other evidence); the link step decides
                         ev.append((p if FILE_LIKE.search(p) else p.rstrip("/") + "/*", "write", snippet(st, p)))
                     continue
                 kind = direction(fn, args)
@@ -577,13 +578,21 @@ def scan(a):
         return
     idx = Index(set(stat) | set(scripts))
 
-    def match(p, s):
-        """resolved candidates first; bare-relative suffix match only as fallback."""
+    def match(p, s, folder=False):
+        """resolved candidates first; bare-relative suffix match only as fallback.
+        folder: p is "<folder>/*" from a configured write function: only the files directly in that folder count,
+        checked per candidate (so a candidate with none falls through to the next)"""
         cands = resolve(p, s)
-        for c in cands[:-1] if len(cands) > 1 else cands:
+        def one(c):
             hit, conf = idx.match(c)
+            if folder and c.endswith("/*"):
+                r = to_regex(c[:-2])  # the resolved folder: symlinks and wildcards as in the candidate itself
+                hit = [f for f in hit if r.fullmatch(f.rpartition("/")[0])]
+            return hit, conf
+        for c in cands[:-1] if len(cands) > 1 else cands:
+            hit, conf = one(c)
             if hit: return hit, conf
-        return idx.match(cands[-1]) if len(cands) > 1 else ([], "exact")
+        return one(cands[-1]) if len(cands) > 1 else ([], "exact")
 
     # 3. link: every piece of evidence gets a RANK; an output's sources are the scripts with the best rank
     src_of = defaultdict(dict)  # output -> {script: label}
@@ -596,10 +605,10 @@ def scan(a):
     for f in stat: by_stem[f.rpartition("/")[2].split(".")[0]].append(f)
     for s, d in info.items():
         for p, kind, code in d["ev"]:
-            hit, conf = match(p, s)
-            if p.endswith("/*"):  # a configured folder: the files directly in it, also when its name has a wildcard
-                dirs = [to_regex(c) for c in resolve(p[:-2], s)]
-                hit = [f for f in hit if any(r.fullmatch(f.rpartition("/")[0]) for r in dirs)]
+            if p.endswith("/*"):  # a configured write function's path without an extension: a file, else a folder
+                hit, conf = match(p[:-2], s)
+                if not hit: hit, conf = match(p, s, folder=True)
+            else: hit, conf = match(p, s)
             if kind == "read":
                 for f in hit: reads_of[s].add(f); edges.add((f, s, "reads"))
                 if not hit and "*" not in p: edges.add((resolve(p, s)[0], s, "reads"))  # input outside the scan

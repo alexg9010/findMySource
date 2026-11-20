@@ -13,12 +13,13 @@ sys.path.insert(0, REPO)
 from findmysource import cli, rules  # noqa: E402
 
 
-def links(files):
-    """scan a tiny project -> {output: "script label"} ("" when no script was linked)"""
+def links(files, symlinks=None):
+    """scan a tiny project -> {output: "script label"} ("" when no script was linked). symlinks: {link: target}"""
     with tempfile.TemporaryDirectory() as d:
         for p, txt in files.items():
             os.makedirs(os.path.dirname(os.path.join(d, p)) or d, exist_ok=True)
             open(os.path.join(d, p), "w").write(txt)
+        for link, target in (symlinks or {}).items(): os.symlink(os.path.join(d, target), os.path.join(d, link))
         subprocess.run([sys.executable, "-m", "findmysource", "--out", os.path.join(d, ".fms")], cwd=d, check=True,
                        capture_output=True, env={**os.environ, "PYTHONPATH": REPO})
         rows = csv.DictReader(open(os.path.join(d, ".fms", "manifest.tsv")), delimiter="\t")
@@ -77,6 +78,21 @@ def test_configured_write_functions():
     got.pop("fms.json")
     assert got == {"out/result.csv": "a.R write", "raw/input.csv": "", "figs/output.pdf": "a.R write",
                    "plots/run1/converted/new.png": "a.R write-glob", "plots/run1/converted/archive/old.png": ""}, got
+
+
+def test_configured_write_function_paths():
+    """short names, a file without an extension, a symlinked folder under another name, and a script-relative
+    folder that has only nested files (the project-root one must still be found)"""
+    got = links({"fms.json": '{"write_functions": {"convert_all": 0}}',
+                 "scripts/a.R": 'convert_all("qc")\nconvert_all("out/checkpoint")\nconvert_all("linked")\n'
+                                'for (b in batches) convert_all(file.path("plots", b, "converted"))\n',
+                 "qc/report.png": "", "out/checkpoint": "", "real_target/x.png": "",
+                 "plots/run1/converted/new.png": "", "scripts/plots/run1/converted/archive/old.png": ""},
+                symlinks={"linked": "real_target"})
+    got.pop("fms.json")
+    assert got == {"qc/report.png": "scripts/a.R write-glob", "out/checkpoint": "scripts/a.R write",
+                   "real_target/x.png": "scripts/a.R write-glob", "plots/run1/converted/new.png": "scripts/a.R write-glob",
+                   "scripts/plots/run1/converted/archive/old.png": ""}, got
 
 
 def table():
