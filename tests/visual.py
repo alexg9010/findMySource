@@ -107,7 +107,30 @@ def main():
                     for (y1, x1, r1), (y2, x2, r2) in zip(sorted(spots), sorted(spots)[1:]):
                         if y1 == y2 and x2 - x1 < r1 + r2 - 0.01:
                             problems.append(f"timeline: markers overlap at y={y1}")
+                if tab == "flow" and page.locator("#fsvg .nd").count():  # keyboard only: Enter on a focused box selects it
+                    if page.is_visible("#det"):
+                        page.click("#det .x")  # an earlier click left the panel open
+                    page.focus("#fsvg .nd >> nth=0")
+                    page.keyboard.press("Enter")
+                    if not page.is_visible("#det"):
+                        problems.append("flow: Enter on a focused box shows no details panel")
+                    if not page.evaluate("!!document.activeElement.closest('#fsvg .nd')"):
+                        problems.append("flow: keyboard focus is lost after selecting a box")
+                    page.select_option("#sel", "(all)")
+                    page.fill("#fq", "")
+                    page.type("#fq", "pca.png")  # a search that matches must not pull focus out of the search box
+                    if page.evaluate("document.activeElement.id") != "fq" or page.input_value("#fq") != "pca.png":
+                        problems.append("flow: searching moves keyboard focus away from the search box")
                 if tab == "table":  # the staleness filter must narrow the table
+                    page.focus("#tb th >> nth=0")
+                    page.keyboard.press("Enter")
+                    if page.evaluate("document.activeElement.tagName") != "TH":
+                        problems.append("table: keyboard focus is lost after sorting")
+                    page.focus("#tb tr[data-o] >> nth=0")
+                    page.keyboard.press("Enter")  # opens the row in Flow: focus goes to its details
+                    if page.evaluate("document.activeElement.id") != "det":
+                        problems.append("table: opening a row from the keyboard leaves focus nowhere")
+                    page.click("nav button[data-v=table]")
                     before = page.locator("#tb tr").count()
                     page.select_option("#sf", "stale")
                     after = page.locator("#tb tr").count()
@@ -189,7 +212,10 @@ def main():
             page = open_tab("table", at="file://" + os.path.join(gproj, "rep", "index.html"))
             page.select_option("#sf", "stale")  # a filter left on (nothing is stale here) must not hide the group's outputs
             page.click("nav button[data-v=timeline]")
-            page.click("#tsvg [data-s]")  # 16 outputs written at once: one marker that lists them in Table
+            page.focus("#tsvg [data-s]")  # 16 outputs written at once: one marker that lists them in Table
+            page.keyboard.press("Enter")
+            if page.evaluate("document.activeElement.tagName") != "TR":
+                problems.append("timeline: opening a grouped marker from the keyboard leaves focus outside Table")
             if page.locator("#tb tr[data-o]").count() != 16:
                 problems.append("timeline: a grouped marker does not list its outputs in Table")
             page.close()
