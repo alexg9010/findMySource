@@ -41,7 +41,8 @@ is a patch (0.x.y).
 
 A PR with a change users notice adds a line under `## Unreleased` in CHANGELOG.md. To release, rename
 that heading to `## X.Y.Z (date)` and add a new empty `## Unreleased` above it, bump `__version__` in
-`findmysource/__init__.py`, commit, then tag and push `vX.Y.Z`.
+`findmysource/__init__.py` and commit on `main`. Then push `main` before the tag, so the branch has the
+release commit too: `git tag -a vX.Y.Z -m vX.Y.Z && git push origin main && git push origin vX.Y.Z`.
 `.github/workflows/release.yml` runs CI, checks the tag matches the version, builds and creates
 the GitHub Release.
 
