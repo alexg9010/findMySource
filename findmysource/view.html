@@ -336,7 +336,7 @@ function flow() {
     if ($('det').hidden !== was) draw();
     highlight(id == null ? null : shown(id));
     // the redraw (or the tab switch) dropped keyboard focus: back to the box when it came from the map, else to the details; search keeps it
-    if (id != null && from !== $('fq')) (fromMap ? $('fsvg').querySelector(`.nd[data-id="${shown(id)}"]`) : $('det'))?.focus({preventScroll: true});
+    if (id != null && from !== $('fq')) (fromMap ? $('fsvg').querySelector(`.nd[data-id="${shown(id)}"]`) : $('det'))?.focus({preventScroll: fromMap});  // the panel may sit below the map on narrow screens
   }
   // the box that shows a node: its folder group when large folders are grouped
   const shown = id => $('fold').checked && G.nodes[id].grp !== undefined ? G.nodes[id].grp : id;
