@@ -406,7 +406,7 @@ function timeline() {
   $('tsvg').onclick = ev => {
     const c = ev.target.closest('[data-o], [data-s]');
     if (c && c.dataset.o) openPath(c.dataset.o);
-    else if (c) { show('table'); $('q').value = c.dataset.s; $('q').oninput(); }
+    else if (c) { show('table'); $('q').value = c.dataset.s; $('cf').value = $('sf').value = ''; $('q').oninput(); }  // the script alone decides the rows
   };
   drawTimeline();
 }
@@ -431,11 +431,14 @@ function drawTimeline() {
          `<line class="axis" x1="${L}" x2="${L + PW}" y1="${y}" y2="${y}" stroke-dasharray="2 4"/>`;
     if (!isNaN(sm)) o += `<rect x="${x(sm) - 1.5}" y="${y - 8}" width="3" height="16" rx="1" style="fill:var(--ink)"/>`;
     // markers closer than their width form a cluster: up to 6 fan out around the cluster's time, more become one marker
-    const cl = [];
-    by[nm].map(r => ({r, x: x(t(r.m))})).sort((a, b) => a.x - b.x)
-      .forEach(m => { const c = cl[cl.length - 1]; c && m.x - c[c.length - 1].x < 9 ? c.push(m) : cl.push([m]); });
+    // a cluster spans half(c) either side of its mean; clusters that would touch are merged
+    const cl = [], mid = c => c.reduce((s, m) => s + m.x, 0) / c.length, half = c => c.length > 6 ? 8 : c.length * 4.5;
+    by[nm].map(r => ({r, x: x(t(r.m))})).sort((a, b) => a.x - b.x).forEach(m => {
+      cl.push([m]);
+      for (let a, b; cl.length > 1 && mid(b = cl[cl.length - 1]) - half(b) < mid(a = cl[cl.length - 2]) + half(a);) cl.splice(-2, 2, a.concat(b));
+    });
     cl.forEach(c => {
-      const mx = c.reduce((s, m) => s + m.x, 0) / c.length;
+      const mx = mid(c);
       if (c.length > 6) {
         const st = c.filter(m => staleBy(m.r) > 0).length, names = c.map(m => m.r.o);
         o += `<g data-s="${esc(nm)}" data-tip="${esc(c.length + ' outputs, ' + c[0].r.m.slice(0, 10) + (st ? `, ${st} possibly stale` : '') + '\n' +
