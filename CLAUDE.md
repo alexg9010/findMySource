@@ -6,7 +6,9 @@ index.html; the user cache if the project is not writable). README.md describes 
 
 ## Layout
 
-- `findmysource/cli.py`: the whole engine and CLI. Generic path finder (`generic_scan`), R fallback
+- `findmysource/rules.py`: every matching rule as data, with its reason and examples (direction words, path
+  builders, R functions, evidence kinds and their order, staleness). `tests/test_rules.py` checks the examples.
+- `findmysource/cli.py`: the engine that applies them, and the CLI. Generic path finder (`generic_scan`), R fallback
   (`parse_script`), path resolution (`make_norm`), matching and ranking (`RANK`), `scan()` writes the
   report, `query()` answers `fms <file|folder|script>`.
 - `findmysource/view.html`: the report, one self-contained page; `scan()` injects the graph.
@@ -19,8 +21,8 @@ index.html; the user cache if the project is not writable). README.md describes 
 
 - No runtime dependencies, standard library only. Must run on Python 3.8.
 - The report must work offline: no CDN, no network requests (`tests/visual.py` fails on any).
-- `STALE_SECONDS` in cli.py and `STALE_MS` in view.html are the same rule; change both.
-- New evidence kinds go into `RANK` and the evidence table in README.md.
+- A rule (a word list, a threshold, an evidence kind) belongs in rules.py, with an example; cli.py and the
+  report read it from there. After changing `EVIDENCE`, `python tests/test_rules.py --fix` rewrites the README table.
 - A matching change needs a case in `tests/test_core.py` or in an example project plus its
   `expected.json`. Never weaken a test or expected.json to make a change pass.
 - Keep the existing dense style of cli.py; prefer a small change in the shared function over

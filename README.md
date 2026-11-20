@@ -218,9 +218,11 @@ record how an output was made.
    | `stem-rule` | rendered report (`analysis.html`) next to its `analysis.Rmd` / `.qmd` / `.ipynb` |
    | `name` | passes this file name to a writing function, e.g. `save_table(df, "de_table")` |
    | `write-glob` | writes to a path that matches only through wildcards |
-   | `lang-write`, `lang-glob` | language-specific fallback, currently R: known write functions without a write verb in their name, such as `pdf()` and `png()` |
+   | `lang-write` | language-specific fallback, currently R: a known write function without a write verb in its name, such as `pdf()` and `png()` |
+   | `lang-glob` | R fallback: a known write function such as `png()`, matched through wildcards |
    | `chunk-folder` | in `analysis_files/` next to `analysis.Rmd` / `.qmd` / `.ipynb`, where knitr and Quarto put chunk figures |
-   | `mention`, `mention-glob` | the path appears in the script, but no read or write was recognised |
+   | `mention` | the path appears in the script, but no read or write was recognised |
+   | `mention-glob` | the path appears with wildcards, but no read or write was recognised |
 
    A script that *reads* a file is never reported as its source.
 5. **Date.**
