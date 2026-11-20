@@ -12,11 +12,14 @@ uv installs Playwright on the fly. The browser comes from one of:
 Without a report path, fms is run on examples/r-project first.
 Exits 1 if any tab logged an error, a request failed or a check failed.
 """
+import functools
+import http.server
 import os
 import shutil
 import subprocess
 import sys
 import tempfile
+import threading
 
 from playwright.sync_api import sync_playwright
 
@@ -136,6 +139,22 @@ def main():
                 problems.append("unmatched: no folders drawn")
             snap(page, "unmatched")
             page.close()
+
+            # served over http (e.g. GitHub Pages) the report must not offer file:// links to the author's disk
+            srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), functools.partial(
+                type("Q", (http.server.SimpleHTTPRequestHandler,), {"log_message": lambda *a: None}), directory=os.path.dirname(report)))
+            threading.Thread(target=srv.serve_forever, daemon=True).start()
+            page = browser.new_page(viewport={"width": 1500, "height": 950})
+            page.goto(f"http://127.0.0.1:{srv.server_port}/{os.path.basename(report)}#flow", wait_until="load")
+            page.click("#fsvg .nd >> nth=0")
+            if page.locator("#det a[href^='file:']").count() or not page.locator("#det a[data-copy]").count():
+                problems.append("flow: a hosted report offers file:// links or no copy path")
+            page.evaluate("delete Navigator.prototype.clipboard")  # plain http has no clipboard API
+            page.click("#det a[data-copy]")
+            if page.inner_text("#det a[data-copy]") != page.get_attribute("#det a[data-copy]", "data-copy"):
+                problems.append("flow: without a clipboard, copy path does not show the path")
+            page.close()
+            srv.shutdown()
 
             page = open_tab("flow", dark=True)
             snap(page, "flow-dark")

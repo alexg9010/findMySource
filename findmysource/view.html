@@ -164,6 +164,7 @@ const flowStep = id => {  // external inputs live in the step of the first scrip
 function openPath(p) { const id = NODE[p]; if (id !== undefined) { show('flow'); flow.open(flowStep(id), id); } }
 
 /* header */
+const LOCAL = location.protocol === 'file:';  // 'open' only works where the report was made
 $('sub').textContent = D.root + ' · generated ' + day(D.generated);
 const scriptsUsed = new Set(D.rows.flatMap(r => r.s)).size;
 $('stats').innerHTML = [[D.scripts.length, 'scripts parsed'], [scriptsUsed, 'scripts with outputs'],
@@ -354,7 +355,8 @@ function flow() {
     const from = (i, k) => [...new Set(G.edges.filter(e => e.from === i && (k ? e.kind === k : e.kind !== 'writes')).map(e => e.to))];
     let h = `<button class="x" data-tip="close">×</button><h3>${esc(n.label)}</h3><div class="p">${esc(p)}</div>`;
     if (n.group !== 'group')
-      h += `<div><a href="${esc(encodeURI('file://' + abs))}" target="_blank">open</a> · <a data-copy="${esc(abs)}">copy path</a></div>`;
+      h += LOCAL ? `<div><a href="${esc(encodeURI('file://' + abs))}" target="_blank">open</a> · <a data-copy="${esc(abs)}">copy path</a></div>`
+                 : p.startsWith('/') ? '' : `<div><a data-copy="${esc(p)}">copy path</a></div>`;  // hosted copy: the scan root is someone else's disk
     if (n.group === 'script') {
       h += `<div class="p">${esc(n.title.split('\n')[1] || '')}</div>`;
       h += `<div class="sec">writes</div>` + list(from(id, 'writes').filter(i => G.nodes[i].grp === undefined), 'nothing found');
@@ -384,7 +386,8 @@ function flow() {
     const a = ev.target.closest('a[data-go], a[data-copy], .x');
     if (!a) return;
     if (a.dataset.go) go(+a.dataset.go);
-    else if (a.dataset.copy) navigator.clipboard?.writeText(a.dataset.copy).then(() => a.textContent = 'copied', () => {});
+    else if (a.dataset.copy) (navigator.clipboard ? navigator.clipboard.writeText(a.dataset.copy) : Promise.reject()).then(() => a.textContent = 'copied',
+      () => { a.textContent = a.dataset.copy; getSelection().selectAllChildren(a); });  // no clipboard (plain http): show the path selected for Ctrl+C
     else select(null);
   };
   $('fq').oninput = () => {
