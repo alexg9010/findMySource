@@ -224,7 +224,7 @@ record how an output was made.
    | `mention` | the path appears in the script, but no read or write was recognised |
    | `mention-glob` | the path appears with wildcards, but no read or write was recognised |
 
-   A script that *reads* a file is never reported as its source.
+   A script that *reads* a file is not reported as its source, unless it also writes it (a cache, say).
 5. **Date.**
    - An output's date is its file modification time.
    - A script's date is its last git commit, or its file time if it has uncommitted changes.
