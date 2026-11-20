@@ -94,6 +94,15 @@ def test_configured_write_function_paths():
                    "real_target/x.png": "scripts/a.R write-glob", "plots/run1/converted/new.png": "scripts/a.R write-glob",
                    "scripts/plots/run1/converted/archive/old.png": ""}, got
 
+    # a folder next to the script beats a file of that name at the project root; a qualified Python call
+    got = links({"fms.json": '{"write_functions": {"convert_all": "out_dir"}}',
+                 "scripts/a.R": 'convert_all(out_dir = "results")\n',
+                 "scripts/b.py": 'converters.convert_all(out_dir="figs")\n',
+                 "results": "", "scripts/results/new.png": "", "figs/f.png": ""})
+    got.pop("fms.json")
+    assert got == {"results": "", "scripts/results/new.png": "scripts/a.R write-glob",
+                   "figs/f.png": "scripts/b.py write-glob"}, got
+
 
 def table():
     return "   | evidence | meaning |\n   |---|---|\n" + "".join(

@@ -184,7 +184,9 @@ def generic_scan(code, v0=None, stmts=None, vars_only=False, writers=None):
         if not vars_only:
             for cm in CALL_ANY.finditer(st):
                 fn = cm.group(1)
-                w = writers.get(fn.rsplit("::", 1)[-1])  # configured: wins over every guess below, builders included
+                # configured: wins over every guess below, builders included. Full name first (save.plots), then
+                # without its package or module (pkg::convert_all, converters.convert_all)
+                w = next((writers[k] for k in (fn, fn.rsplit("::", 1)[-1], re.split(r"[.:$]", fn)[-1]) if k in writers), None)
                 if w is None and is_builder(fn): continue  # evaluated as part of the enclosing argument
                 args, _ = split_call(st, cm.end())
                 if w is not None:
@@ -580,10 +582,13 @@ def scan(a):
 
     def match(p, s, folder=False):
         """resolved candidates first; bare-relative suffix match only as fallback.
-        folder: p is "<folder>/*" from a configured write function: only the files directly in that folder count,
-        checked per candidate (so a candidate with none falls through to the next)"""
+        folder: p is "<folder>/*", a configured write function's path without an extension. Per candidate: a file
+        of that name, else the files directly in that folder; a candidate with neither falls through to the next"""
         cands = resolve(p, s)
         def one(c):
+            if folder and c.endswith("/*"):
+                hit, conf = idx.match(c[:-2])  # an existing file without an extension
+                if hit: return hit, conf
             hit, conf = idx.match(c)
             if folder and c.endswith("/*"):
                 r = to_regex(c[:-2])  # the resolved folder: symlinks and wildcards as in the candidate itself
@@ -605,10 +610,7 @@ def scan(a):
     for f in stat: by_stem[f.rpartition("/")[2].split(".")[0]].append(f)
     for s, d in info.items():
         for p, kind, code in d["ev"]:
-            if p.endswith("/*"):  # a configured write function's path without an extension: a file, else a folder
-                hit, conf = match(p[:-2], s)
-                if not hit: hit, conf = match(p, s, folder=True)
-            else: hit, conf = match(p, s)
+            hit, conf = match(p, s, folder=p.endswith("/*"))  # "/*": a configured path without an extension
             if kind == "read":
                 for f in hit: reads_of[s].add(f); edges.add((f, s, "reads"))
                 if not hit and "*" not in p: edges.add((resolve(p, s)[0], s, "reads"))  # input outside the scan
