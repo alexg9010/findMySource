@@ -7,6 +7,8 @@ a patch bump (0.x.y) covers everything else, new features included.
 
 ## Unreleased
 
+- Scripts that share an output with the same date (e.g. `a.Rmd` and `a.qmd` sharing `a_files/`) are
+  listed in a fixed order; before, the order could change from one run to the next.
 - Report: the title links to the findMySource repository, and the subtitle names the fms version
   that wrote the report.
 

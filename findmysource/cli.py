@@ -613,7 +613,7 @@ def scan(a):
             if not ss:  # most files: short path
                 m.write(f"{rel(f)}\t\tunmatched\t{dates}\t\t\t\t\n"); continue
             # best confidence first; ties -> script whose last change is closest before the output
-            order = sorted(ss, key=lambda s: (info[s]["mtime"] > st.st_mtime, -info[s]["mtime"]))
+            order = sorted(ss, key=lambda s: (info[s]["mtime"] > st.st_mtime, -info[s]["mtime"], s))  # same date: by path
             gap = max((info[s]["mtime"] for s in order), default=0) - st.st_mtime
             if order and gap > STALE_SECONDS: stale[f] = round(gap / 86400, 1)
             m.write("\t".join([
