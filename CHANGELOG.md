@@ -7,6 +7,8 @@ a patch bump (0.x.y) covers everything else, new features included.
 
 ## Unreleased
 
+- R strings that span lines no longer break the rest of the script: their closing quote was paired with the next
+  quote, which could hide later calls or merge the rest of the file into one statement.
 - A call written inside a string in R or Python (`'saveRDS(x, "a.rds")'`) no longer counts as a real call;
   the `{...}` fields of Python f-strings still do. Shell scripts, Snakemake, Nextflow, Makefiles, Julia and
   MATLAB still count calls in strings: they run code from strings, or (MATLAB) use `'` as an operator.

@@ -46,6 +46,9 @@ DIRECTION_EXAMPLES = [  # (call, direction): checked by tests/test_rules.py
     ('open("data/x.txt")', "read"),
     ('plot_volcano("out/x.pdf")', "mention"),  # unknown verb: only a mention
 ]
+# languages whose ordinary strings may span lines ("first\nline."). Not Python (only triple quotes do), Julia or
+# MATLAB (' is also an operator there).
+MULTILINE_STRINGS = (".r", ".rmd", ".qmd")
 STRING_EXAMPLES = [  # same format as the evidence examples: a call inside a string is text, except in shell scripts
     {"why": "a call written inside a string is text in R and Python",
      "files": {"a.R": "example <- 'saveRDS(x, \"out/a.rds\")'\n", "b.py": "doc = 'df.to_csv(\"out/b.csv\")'\n",
