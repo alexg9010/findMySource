@@ -194,7 +194,11 @@ def snippet(st, p):
 
 SHELL_REDIR = re.compile(r"^(?:\d|&)?(>>?|<)\|?(.*)$")  # > x, >>x, 2> x, &> x, < x
 
+SHELL_OPS = re.compile(r"""("(?:[^"\\]|\\.)*"|'[^']*')|(?:\d|&)?(?:>>?|<)\|?|\|\|?|;|&&""")
+
 def shell_split(s):
+    """shell words; operators outside quotes are words of their own (x>out.txt -> x > out.txt)"""
+    s = SHELL_OPS.sub(lambda m: m.group() if m.group(1) else " " + m.group() + " ", s)
     try: return shlex.split(s)
     except ValueError: return s.split()  # unbalanced quote
 
@@ -204,13 +208,16 @@ def shell_expand(w, v):
 
 def shell_words(st, v):
     """a command line -> [(path, write|read|mention, statement)]: redirections, output flags (-o x, --output=x),
-    tee's files, and any other file-like word as a mention. A quoted word with spaces is a command line itself
-    (Snakemake shell: "...", bash -c "...")."""
-    words = [x for w in shell_split(st) for x in (shell_split(w) if re.search(r"\s", w) else [w])]
-    ev, nxt, tee = [], None, False
+    tee's files, and any other file-like word as a mention. A quoted word is one word, except after Snakemake's
+    shell: or -c (bash -c "..."), where it is a command line itself."""
+    words = shell_split(st)
+    words = [x for i, w in enumerate(words)
+             for x in (shell_split(w) if i and words[i - 1] in ("shell:", "-c") and re.search(r"\s", w) else [w])]
+    ev, nxt, tee, cmd = [], None, False, True
     for w in words:
         kind, nxt = nxt, None
-        if w in ("|", ";", "&&", "||"): tee = False; continue
+        if w in ("|", ";", "&&", "||", "shell:", "-c"): tee, cmd = False, True; continue  # next word: a command
+        at_cmd, cmd = cmd, False
         if kind is None:
             m = SHELL_REDIR.match(w)
             if m:
@@ -219,7 +226,7 @@ def shell_words(st, v):
                 w = m.group(2)
             elif w in rules.SHELL_WRITE_FLAGS: nxt = "write"; continue
             elif w.split("=", 1)[0] in rules.SHELL_WRITE_FLAGS and "=" in w: kind, w = "write", w.split("=", 1)[1]
-            elif os.path.basename(w) in rules.SHELL_WRITE_COMMANDS: tee = True; continue
+            elif at_cmd and os.path.basename(w) in rules.SHELL_WRITE_COMMANDS: tee = True; continue
         p = shell_expand(w, v)
         kind = kind or ("write" if tee and not w.startswith("-") else "mention")
         if kind == "mention" and "$" in w: continue  # a variable's own assignment already mentions it
