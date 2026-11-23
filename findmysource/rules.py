@@ -52,6 +52,8 @@ DIRECTION_EXAMPLES = [  # (call, direction): checked by tests/test_rules.py
     ("lapply(read_files, print)", "mention"),  # only the function's position decides, not a data name
     ("sapply(X = files, FUN = readRDS)", "read"),
     ("lapply(X = files, readRDS)", "read"),  # a named data argument frees its position
+    ("mapply(read_data, x = files)", "read"),  # the function comes first: nothing before it to free
+    ("lapply(files, FUN = show, readRDS)", "mention"),  # a named FUN wins; readRDS goes to show() through ...
 ]
 STRING_EXAMPLES = [  # same format as the evidence examples: a call inside a string is text, except in shell scripts
     {"why": "a call written inside a string is text in R and Python",
