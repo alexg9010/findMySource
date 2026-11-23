@@ -27,9 +27,10 @@ READ_VERBS = ["read", "load", "open", "source", "import", "input", "scan", "incl
 # exactly one of these words decides. Exact words only, so Python objects such as reader.plot() stay mentions.
 DOTTED_WRITE_WORDS = ["write", "save", "export", "dump"]
 DOTTED_READ_WORDS = ["read", "load", "import"]
-# an open()-style mode argument overrides the name: open(p, "w") writes although "open" reads
-WRITE_MODES = ["w", "wb", "wt", "w+", "a", "ab", "a+", "x"]
-READ_MODES = ["r", "rb", "rt", "r+"]
+# an open()-style mode argument overrides the name: open(p, "w") writes although "open" reads.
+# Perl: open($fh, '>', p), or two-argument open($fh, ">p") where the mode starts the name.
+WRITE_MODES = ["w", "wb", "wt", "w+", "a", "ab", "a+", "x", ">", ">>", "+>", "+<"]
+READ_MODES = ["r", "rb", "rt", "r+", "<"]
 DIRECTION_EXAMPLES = [  # (call, direction): checked by tests/test_rules.py
     ('saveRDS(x, "out/x.rds")', "write"),
     ('df.to_csv("out/x.csv")', "write"),
