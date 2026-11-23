@@ -200,9 +200,11 @@ def direction(fn, args):
     m = APPLY_RE.search(name)
     if m:  # lapply(files, readRDS): the applied function decides, at its position or as FUN = / .f =
         pos = [a for a in args if not NAMED.match(a)]
+        named = [NAMED.sub("", a, count=1) for a in args if NAMED.match(a) and a.split("=")[0].strip() in rules.APPLY_FUNCTION_ARGS]
         shift = sum(1 for a in args if NAMED.match(a) and a.split("=")[0].strip() in rules.APPLY_DATA_ARGS)
-        fns = [pos[i - shift] for i in rules.APPLY_CALLS[m.group(1)] if 0 <= i - shift < len(pos)] + [
-            NAMED.sub("", a, count=1) for a in args if NAMED.match(a) and a.split("=")[0].strip() in rules.APPLY_FUNCTION_ARGS]
+        # a named data argument frees a position only before the function (lapply(X = files, readRDS))
+        at = [i - shift if i else 0 for i in rules.APPLY_CALLS[m.group(1)]]
+        fns = named or [pos[i] for i in at if 0 <= i < len(pos)]
         for a in fns:
             if re.fullmatch(r"\s*[A-Za-z_.][\w.]*(?:::[A-Za-z_.][\w.]*)?\s*", a) and direction(a.strip(), []) != "mention":
                 return direction(a.strip(), [])
