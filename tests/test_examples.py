@@ -48,8 +48,13 @@ def test_python_project():
     assert not bad, "\n".join(bad)
 
 
+def test_multi_project():
+    bad, _ = run("multi-project")
+    assert not bad, "\n".join(bad)
+
+
 if __name__ == "__main__":
-    for p in ["r-project", "python-project"]:
+    for p in ["r-project", "python-project", "multi-project"]:
         bad, n = run(p)
         print(f"{p}: {n - len(bad)}/{n} correct")
         for b in bad: print("   ", b)

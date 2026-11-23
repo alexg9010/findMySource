@@ -1,0 +1,4 @@
+{
+  "scripts": ["pipeline", "analysis", "notebooks"],
+  "outputs": ["data", "results", "figures", "analysis", "notebooks", "reports"]
+}

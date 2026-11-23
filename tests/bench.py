@@ -164,7 +164,7 @@ def main():
         return show(after, before)
     runs = {}
     with tempfile.TemporaryDirectory() as tmp:
-        for p in ("r-project", "python-project"):
+        for p in ("r-project", "python-project", "multi-project"):
             root = os.path.join(tmp, p)
             shutil.copytree(os.path.join(REPO, "examples", p), root)
             set_dates.main(root)
