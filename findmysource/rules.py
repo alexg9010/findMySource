@@ -123,6 +123,7 @@ APPLY_CALLS = {**{n: (1,) for n in "lapply sapply vapply map_df map_dfr map_dfc 
                                    "future_lapply mclapply".split()},
                "mapply": (0,), "Map": (0,), "parLapply": (2,), "map": (0, 1)}
 APPLY_FUNCTION_ARGS = ["FUN", "fun", ".f", "f", "func"]
+APPLY_DATA_ARGS = ["X", "x", ".x", ".l", "cl"]  # named, these free their position: lapply(X = files, readRDS)
 # format calls are case-sensitive (GLUE() is not glue()); the other builders are not
 # a string is a candidate file path when it ends in an extension of up to 8 characters
 FILE_EXT_RE = r"\.[A-Za-z][A-Za-z0-9]{0,7}$"
