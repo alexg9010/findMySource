@@ -194,26 +194,42 @@ def snippet(st, p):
 
 SNAKE_DIRECTIVE = re.compile(r"^(\s*)(\w+):(.*)$")
 
+def depth(line):
+    """brackets opened minus closed on a line, outside strings and comments"""
+    d = 0
+    for t in LEX_RE.finditer(line):
+        if t.group()[0] == "#": break
+        d += {"(": 1, "[": 1, ")": -1, "]": -1}.get(t.group(), 0)
+    return d
+
+def snake_items(a):
+    """one declared file expression -> its files: lists flattened, temp("x") and the like unwrapped"""
+    a = NAMED.sub("", a, count=1).strip()
+    if a[:1] == "[" and a[-1:] == "]": return [x for y in split_call("f(" + a[1:-1] + ")", 2)[0] for x in snake_items(y)]
+    m = re.match(r"([\w.]+)\s*\(", a)
+    if m and m.group(1).rsplit(".", 1)[-1] in rules.SNAKEMAKE_WRAPPERS:  # temp("x"), expand("x", s=S)
+        return snake_items(next((x for x in split_call(a, m.end())[0] if not NAMED.match(x)), ""))
+    return [a]
+
 def snakemake_files(code, v0=None):
     """Snakemake rules -> [(path, write|read, line)]: files in output:/log:/benchmark: (write) and input: (read).
-    A directive runs from its line over the more indented lines below it; comments are not part of it. Each file is
-    one expression, evaluated with the variables assigned above it; temp("x") and the like are unwrapped, {wildcards}
-    become *."""
-    ev, v, block = [], dict(v0 or {}), None  # block: [kind, indent, directive text, its lines as shown]
+    A directive runs from its line over the more indented lines below it; comments and triple-quoted text are not
+    part of it. Each file is one expression, evaluated with the variables assigned above it; lists are flattened,
+    temp("x") and the like unwrapped, {wildcards} (also {s,\\d{3}}) become *."""
+    code = re.sub(r'"""[\s\S]*?"""|\'\'\'[\s\S]*?\'\'\'', lambda m: re.sub(r"[^\n]", " ", m.group()), code)
+    ev, v, block, lines = [], dict(v0 or {}), None, code.split("\n")  # block: [kind, indent, text, lines as shown]
 
     def flush():
         if not (block and block[0]): return
-        for a in split_call("f(" + "\n".join(block[2]) + ")", 2)[0]:
-            a = NAMED.sub("", a, count=1)
-            m = re.match(r"\s*([\w.]+)\s*\(", a)
-            while m and m.group(1).rsplit(".", 1)[-1] in rules.SNAKEMAKE_WRAPPERS:  # temp("x"), expand("x", s=S)
-                a = next((x for x in split_call(a, m.end())[0] if not NAMED.match(x)), "")
-                m = re.match(r"\s*([\w.]+)\s*\(", a)
-            p = re.sub(r"\{[^{}]*\}", "*", evaluate(a, v))
-            if FILE_LIKE.search(p) and len(p.replace("*", "")) >= 3 and "://" not in p:
-                ev.append((p, block[0], snippet("\n".join(block[3]), p)))
+        for item in split_call("f(" + "\n".join(block[2]) + ")", 2)[0]:
+            for a in snake_items(item):
+                p = re.sub(r"\{(?:[^{}]|\{[^{}]*\})*\}", "*", evaluate(a, v))
+                if FILE_LIKE.search(p) and len(p.replace("*", "")) >= 3 and "://" not in p:
+                    ev.append((p, block[0], snippet("\n".join(block[3]), p)))
 
-    for line in code.split("\n"):
+    i = 0
+    while i < len(lines):
+        line = lines[i]; i += 1
         line = line[:next((t.start() for t in LEX_RE.finditer(line) if t.group()[0] == "#"), len(line))].rstrip()
         if not line.strip(): continue  # blank or comment: a directive goes on
         m, cur = SNAKE_DIRECTIVE.match(line), len(line) - len(line.lstrip())
@@ -222,7 +238,11 @@ def snakemake_files(code, v0=None):
         block = [("write" if m.group(2) in rules.SNAKEMAKE_WRITE else "read" if m.group(2) in rules.SNAKEMAKE_READ
                   else None), cur, [m.group(3)], [line.strip()]] if m else None
         a = GEN_ASG.match(line) if not m and cur == 0 else None
-        if a: v[a.group(1)] = evaluate(a.group(2), v)  # top-level variables, in file order
+        if a:  # top-level variables, in file order; an assignment goes on while its brackets are open
+            st, d = line, depth(line)
+            while d > 0 and i < len(lines): st += "\n" + lines[i]; d += depth(lines[i]); i += 1
+            a = GEN_ASG.match(st)
+            v[a.group(1)] = evaluate(a.group(2), v)
     flush()
     return ev
 
