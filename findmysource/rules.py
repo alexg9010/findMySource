@@ -35,6 +35,8 @@ DIRECTION_EXAMPLES = [  # (call, direction): checked by tests/test_rules.py
     ('write.fst(df, "out/x.fst")', "write"),
     ('read.dcf("DESCRIPTION.dcf")', "read"),
     ('reader.plot("out/x.png")', "mention"),  # an object, not a verb: only exact words count
+    ('write$plot("out/x.png")', "mention"),  # R list member, not verb.object: only the dot form counts
+    ('read$plot("out/x.png")', "mention"),
     ('np.load("data/x.npy")', "read"),
     ('open("data/x.txt")', "read"),
     ('plot_volcano("out/x.pdf")', "mention"),  # unknown verb: only a mention
