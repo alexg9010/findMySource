@@ -202,9 +202,15 @@ def depth(line):
         d += {"(": 1, "[": 1, ")": -1, "]": -1}.get(t.group(), 0)
     return d
 
+def uncomment(line):
+    """line without its # comment (a # inside a string stays)"""
+    return line[:next((t.start() for t in LEX_RE.finditer(line) if t.group()[0] == "#"), len(line))].rstrip()
+
 def snake_items(a):
     """one declared file expression -> its files: lists flattened, temp("x") and the like unwrapped"""
     a = NAMED.sub("", a, count=1).strip()
+    if a[:1] == "(" and a[-1:] == ")" and split_call("f" + a, 2)[1] == len(a):  # ("x"): grouping, not ("a") + ("b")
+        return [x for y in split_call("f" + a, 2)[0] for x in snake_items(y)]
     if a[:1] == "[" and a[-1:] == "]": return [x for y in split_call("f(" + a[1:-1] + ")", 2)[0] for x in snake_items(y)]
     m = re.match(r"([\w.]+)\s*\(", a)
     if m and m.group(1).rsplit(".", 1)[-1] in rules.SNAKEMAKE_WRAPPERS:  # temp("x"), expand("x", s=S)
@@ -224,13 +230,14 @@ def snakemake_files(code, v0=None):
         for item in split_call("f(" + "\n".join(block[2]) + ")", 2)[0]:
             for a in snake_items(item):
                 p = re.sub(r"\{(?:[^{}]|\{[^{}]*\})*\}", "*", evaluate(a, v))
-                if FILE_LIKE.search(p) and len(p.replace("*", "")) >= 3 and "://" not in p:
-                    ev.append((p, block[0], snippet("\n".join(block[3]), p)))
+                if (FILE_LIKE.search(p) or block[0] == "write") and len(p.replace("*", "")) >= 3 and "://" not in p:
+                    # a declared output without extension: a flag file or a directory(); "/*" lets the link step decide
+                    ev.append((p if FILE_LIKE.search(p) else p.rstrip("/") + "/*", block[0], snippet("\n".join(block[3]), p)))
 
     i = 0
     while i < len(lines):
         line = lines[i]; i += 1
-        line = line[:next((t.start() for t in LEX_RE.finditer(line) if t.group()[0] == "#"), len(line))].rstrip()
+        line = uncomment(line)
         if not line.strip(): continue  # blank or comment: a directive goes on
         m, cur = SNAKE_DIRECTIVE.match(line), len(line) - len(line.lstrip())
         if block and cur > block[1] and not m: block[2].append(line); block[3].append(line.strip()); continue
@@ -240,7 +247,7 @@ def snakemake_files(code, v0=None):
         a = GEN_ASG.match(line) if not m and cur == 0 else None
         if a:  # top-level variables, in file order; an assignment goes on while its brackets are open
             st, d = line, depth(line)
-            while d > 0 and i < len(lines): st += "\n" + lines[i]; d += depth(lines[i]); i += 1
+            while d > 0 and i < len(lines): st += "\n" + uncomment(lines[i]); d += depth(lines[i]); i += 1
             a = GEN_ASG.match(st)
             v[a.group(1)] = evaluate(a.group(2), v)
     flush()
