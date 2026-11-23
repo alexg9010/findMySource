@@ -104,10 +104,19 @@ BUILDER_EXAMPLES = [  # (expression, variables, path pattern): "*" is a part onl
     ('list.files(out, pattern = "\\\\.tsv$", full.names = TRUE)', {"out": "results"}, "results/*.tsv"),
     ('list.files("results", pattern = "^de_.*\\\\.csv$")', {}, "results/de_*.csv"),
     ('list.files("results", pattern = ".csv")', {}, "results/*.csv"),  # unanchored: taken as the end of the name
+    ('list.files(wdir, pattern = "mbias_.{3}\\\\.txt")', {"wdir": "qc"}, "qc/mbias_*.txt"),
     ('list.files("results", pattern = "[0-9]+\\\\.csv")', {}, "results/*"),  # a regex beyond .* and \\.: any file
     ('Sys.glob(file.path(out, "*.png"))', {"out": "figures"}, "figures/*.png"),
     ('glob.glob(os.path.join(OUT, "*.csv"))', {"OUT": "results"}, "results/*.csv"),
 ]
+# directory listings stand for the files they list: list.files(dir, pattern = regex) and fs::dir_ls(dir, glob =,
+# regexp =) -> dir/<glob>; Sys.glob(), glob.glob() -> their pattern. A regex becomes a glob when it uses only
+# ^, $, .*, .+, .{n} and \\.; an unanchored one is taken as the end of the name; any other regex lists every file (*).
+LIST_CALLS = ["list.files", "dir_ls"]
+GLOB_CALLS = ["Sys.glob", "glob", "iglob"]
+# apply-style calls: lapply(files, readRDS) reads, because the function they apply reads
+APPLY_CALLS = ["lapply", "sapply", "vapply", "mapply", "Map", "map", "map_df", "map_dfr", "map_dfc", "walk", "imap",
+               "pmap", "future_map", "future_lapply", "mclapply", "parLapply"]
 # format calls are case-sensitive (GLUE() is not glue()); the other builders are not
 # a string is a candidate file path when it ends in an extension of up to 8 characters
 FILE_EXT_RE = r"\.[A-Za-z][A-Za-z0-9]{0,7}$"
