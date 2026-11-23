@@ -23,12 +23,14 @@ index.html; the user cache if the project is not writable). README.md describes 
 - The report must work offline: no CDN, no network requests (`tests/visual.py` fails on any).
 - A rule (a word list, a threshold, an evidence kind) belongs in rules.py, with an example; cli.py and the
   report read it from there. After changing `EVIDENCE`, `python tests/test_rules.py --fix` rewrites the README table.
-- A matching change needs a case in `tests/test_core.py` or in an example project plus its
-  `expected.json`. Never weaken a test or expected.json to make a change pass.
+- A matching change needs a case in `rules.py` (an example), `tests/test_rules.py`, `tests/test_core.py`,
+  or an example project plus its `expected.json`. See TESTING.md. Never weaken a test or expected.json to make a change pass.
 - Keep the existing dense style of cli.py; prefer a small change in the shared function over
   special cases in callers.
 
 ## Check before committing
+
+TESTING.md explains the test layers and how to change matching code safely.
 
 ```bash
 uvx pytest -q                 # all tests; CI also runs Python 3.8-3.14
