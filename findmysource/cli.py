@@ -154,13 +154,25 @@ def statements(code):
 
 # a string literal with its prefix (f"", r''): triple-quoted ones may span lines, others end at the line
 QUOTED = re.compile(r"""(?<!\w)([rRbBuUfF]{0,2})("{3}[\s\S]*?"{3}|'{3}[\s\S]*?'{3}|"(?:[^"\\\n]|\\.)*"|'(?:[^'\\\n]|\\.)*')""")
+SIMPLE_STR = re.compile(r""""(?:[^"\\\n]|\\.)*"|'(?:[^'\\\n]|\\.)*'""")
 def blank(m):
     """the string's text as spaces, same length and lines (offsets stay valid); an f-string keeps its {...} fields"""
     p, q = m.groups()
-    f = "f" in p.lower()
-    keep = r"(\{\{|\}\})|(\{(?:[^{}]|\{[^{}]*\})*\})|[^\n]" if f else r"()()[^\n]"  # {x:{width}} nests once
-    body = QUOTED.sub(blank, q[1:-1]) if f else q[1:-1]  # f-string: strings inside its fields are text, braces too
-    return p + q[0] + re.sub(keep, lambda x: x.group(2) or " " * len(x.group()), body) + q[-1]
+    body = q[1:-1]
+    if "f" not in p.lower(): return p + q[0] + re.sub(r"[^\n]", " ", body) + q[-1]
+    out, i = [], 0
+    while i < len(body):  # text is blanked; a {field} is code, found quote-aware, with the strings inside it masked
+        if body[i] != "{" or body[i:i + 2] == "{{":
+            n = 2 if body[i:i + 2] in ("{{", "}}") else 1
+            out.append(re.sub(r"[^\n]", " ", body[i:i + n])); i += n; continue
+        j, depth = i, 0
+        while j < len(body):
+            s = SIMPLE_STR.match(body, j) if body[j] in "'\"" else None
+            if s: j = s.end(); continue
+            depth += {"{": 1, "}": -1}.get(body[j], 0); j += 1
+            if not depth: break
+        out.append(QUOTED.sub(blank, body[i:j])); i = j
+    return p + q[0] + "".join(out) + q[-1]
 
 
 def direction(fn, args):
