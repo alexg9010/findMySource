@@ -210,6 +210,9 @@ record how an output was made.
    - *save, write, dump, export, `to_…`* → **write**
    - *read, load, open, import, include* → **read**
    - an `open()` mode such as `"w"` overrides the name.
+   - In shell scripts, Snakemake `shell:` commands and Makefiles, command lines are read as words:
+     a redirection (`> out.txt`, `2>> err.log`), an output flag (`-o`, `-O`, `--output=`) or `tee` → **write**,
+     `< in.txt` → **read**, with `$VAR` expanded.
    - Anything else is a weaker **mention**.
    - A call written inside a string (`'saveRDS(x, "a.rds")'`) is text, not code, except in shell scripts,
      Snakemake, Nextflow and Makefiles, which run code from strings (`Rscript -e "..."`).

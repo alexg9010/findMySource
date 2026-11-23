@@ -7,6 +7,8 @@ a patch bump (0.x.y) covers everything else, new features included.
 
 ## Unreleased
 
+- Shell command lines (shell scripts, Snakemake `shell:`, Makefiles): redirections (`> out.txt`), output flags
+  (`curl -o`, `wget -O`, `--output=`) and `tee` are writes, `< in.txt` a read, and `$VAR` is expanded.
 - A call written inside a string in R or Python (`'saveRDS(x, "a.rds")'`) no longer counts as a real call;
   the `{...}` fields of Python f-strings still do. Shell scripts, Snakemake, Nextflow, Makefiles, Julia and
   MATLAB still count calls in strings: they run code from strings, or (MATLAB) use `'` as an operator.

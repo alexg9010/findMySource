@@ -25,7 +25,7 @@ paths from command-line args are unknown; only the Network tab needs internet (v
 Config keys (JSON, all optional): scripts, outputs, exclude, aliases, extensions, hidden, write_functions.
   {"scripts": ["scripts"], "outputs": ["results", "figures"], "aliases": {"/local": "/data/local"}}
 """
-import argparse, bisect, csv, datetime, fnmatch, hashlib, json, os, re, subprocess, sys, time
+import argparse, bisect, csv, datetime, fnmatch, hashlib, json, os, re, shlex, subprocess, sys, time
 from collections import Counter, defaultdict
 
 from . import __version__, rules
@@ -192,12 +192,47 @@ def snippet(st, p):
     hit = max(lines, key=lambda l: sum(k in l for k in keys))  # the line with most pieces of the name (ties: first)
     return (hit if hit == lines[0] else f"{lines[0][:60]} … {hit}")[:200]
 
-def generic_scan(code, v0=None, stmts=None, vars_only=False, writers=None, code_in_strings=False):
+SHELL_REDIR = re.compile(r"^(?:\d|&)?(>>?|<)\|?(.*)$")  # > x, >>x, 2> x, &> x, < x
+
+def shell_split(s):
+    try: return shlex.split(s)
+    except ValueError: return s.split()  # unbalanced quote
+
+def shell_expand(w, v):
+    """$x, ${x} -> value of x; $(...), `...` and unknown variables -> '*'"""
+    return re.sub(r"\$\{?(\w+)\}?", lambda m: v.get(m.group(1), "*"), re.sub(r"\$\([^)]*\)|`[^`]*`", "*", w))
+
+def shell_words(st, v):
+    """a command line -> [(path, write|read|mention, statement)]: redirections, output flags (-o x, --output=x),
+    tee's files, and any other file-like word as a mention. A quoted word with spaces is a command line itself
+    (Snakemake shell: "...", bash -c "...")."""
+    words = [x for w in shell_split(st) for x in (shell_split(w) if re.search(r"\s", w) else [w])]
+    ev, nxt, tee = [], None, False
+    for w in words:
+        kind, nxt = nxt, None
+        if w in ("|", ";", "&&", "||"): tee = False; continue
+        if kind is None:
+            m = SHELL_REDIR.match(w)
+            if m:
+                kind = "read" if m.group(1) == "<" else "write"
+                if not m.group(2): nxt = kind; continue
+                w = m.group(2)
+            elif w in rules.SHELL_WRITE_FLAGS: nxt = "write"; continue
+            elif w.split("=", 1)[0] in rules.SHELL_WRITE_FLAGS and "=" in w: kind, w = "write", w.split("=", 1)[1]
+            elif os.path.basename(w) in rules.SHELL_WRITE_COMMANDS: tee = True; continue
+        p = shell_expand(w, v)
+        kind = kind or ("write" if tee and not w.startswith("-") else "mention")
+        if kind == "mention" and "$" in w: continue  # a variable's own assignment already mentions it
+        if FILE_LIKE.search(p) and len(p.replace("*", "")) >= 3 and "://" not in p: ev.append((p, kind, snippet(st, p)))
+    return ev
+
+def generic_scan(code, v0=None, stmts=None, vars_only=False, writers=None, code_in_strings=False, shell=False):
     """-> dict(ev=[(pattern, write|read|mention, statement)], names={literal}, uses={script name}, vars={}, stmts=[]).
     vars_only: only follow assignments and script references (cheap first pass).
     writers: the project's own write functions from fms.json, {name: argument name or position of the path};
     a folder there means every file in it.
-    code_in_strings: calls inside string literals count too (shell scripts, Snakemake: rules.CODE_IN_STRINGS)."""
+    code_in_strings: calls inside string literals count too (shell scripts, Snakemake: rules.CODE_IN_STRINGS).
+    shell: also read each statement as a command line (rules.SHELL_SCRIPTS)."""
     writers = writers or {}
     v = dict(v0 or {})
     ev, names, uses = [], set(), set()
@@ -234,9 +269,11 @@ def generic_scan(code, v0=None, stmts=None, vars_only=False, writers=None, code_
                     lit = re.fullmatch(r"""\s*["']([\w.\-]{4,})["']\s*""", a)
                     if lit and kind == "write" and not FILE_LIKE.search(lit.group(1)):
                         names.add(lit.group(1))  # save_table(df, "de_table") -> de_table.*
+            if shell: ev += shell_words(st, v)
         m = GEN_ASG.match(st)
         if m:
-            val = evaluate(m.group(2), v)
+            words = shell_split(m.group(2)) if shell else []
+            val = shell_expand(words[0], v) if len(words) == 1 else evaluate(m.group(2), v)  # OUT=results/qc is text
             v[m.group(1)] = val
             if not vars_only and FILE_LIKE.search(val) and len(val.replace("*", "")) >= 3 and "://" not in val:
                 ev.append((val, "mention", snippet(st, val)))
@@ -460,7 +497,7 @@ def walk(roots, exclude, hidden=False, skip=()):
 def _parse1(s):
     """first pass over one script: own variables, script references, statements, R fallback"""
     src, params = read_code(s)
-    g = generic_scan(src, params, vars_only=True)
+    g = generic_scan(src, params, vars_only=True, shell=s.lower().endswith(rules.SHELL_SCRIPTS))
     return {"params": params, "uses": sorted(g["uses"]), "vars": g["vars"], "stmts": g["stmts"],
             "lang": parse_script(src, params, code_in_strings=s.lower().endswith(rules.CODE_IN_STRINGS))}
 
@@ -468,7 +505,7 @@ def _parse2(job):
     """second pass: evidence, with the variables inherited from source()d / imported scripts"""
     s, v0, stmts, writers = job
     g = generic_scan(read_code(s)[0], v0, stmts=stmts, writers=writers,
-                     code_in_strings=s.lower().endswith(rules.CODE_IN_STRINGS))
+                     code_in_strings=s.lower().endswith(rules.CODE_IN_STRINGS), shell=s.lower().endswith(rules.SHELL_SCRIPTS))
     return [list(e) for e in g["ev"]], sorted(g["names"])
 
 def pmap(fn, items):
