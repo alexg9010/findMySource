@@ -192,12 +192,33 @@ def snippet(st, p):
     hit = max(lines, key=lambda l: sum(k in l for k in keys))  # the line with most pieces of the name (ties: first)
     return (hit if hit == lines[0] else f"{lines[0][:60]} … {hit}")[:200]
 
-def generic_scan(code, v0=None, stmts=None, vars_only=False, writers=None, code_in_strings=False):
+SNAKE_DIRECTIVE = re.compile(r"^(\s*)(\w+):(.*)$")
+SNAKE_STR = re.compile(r"""[rRfF]?(["'])(?:[^"'\\\n]|\\.)*?\1""")
+
+def snakemake_files(code, v):
+    """Snakemake rules -> [(path, write|read, line)]: files in output:/log:/benchmark: (write) and input: (read),
+    on the directive's line and the more indented lines below it; {wildcards} become *."""
+    ev, kind, ind = [], None, 0
+    for line in code.split("\n"):
+        if not line.strip(): continue
+        m, cur = SNAKE_DIRECTIVE.match(line), len(line) - len(line.lstrip())
+        if m: text, ind, kind = m.group(3), cur, ("write" if m.group(2) in rules.SNAKEMAKE_WRITE else
+                                                 "read" if m.group(2) in rules.SNAKEMAKE_READ else None)
+        elif kind and cur > ind: text = line
+        else: kind = None; continue
+        for t in SNAKE_STR.finditer(text):
+            p = re.sub(r"\{[^{}]*\}", "*", evaluate(t.group(), v))
+            if kind and FILE_LIKE.search(p) and len(p.replace("*", "")) >= 3 and "://" not in p:
+                ev.append((p, kind, " ".join(line.split())))
+    return ev
+
+def generic_scan(code, v0=None, stmts=None, vars_only=False, writers=None, code_in_strings=False, snakemake=False):
     """-> dict(ev=[(pattern, write|read|mention, statement)], names={literal}, uses={script name}, vars={}, stmts=[]).
     vars_only: only follow assignments and script references (cheap first pass).
     writers: the project's own write functions from fms.json, {name: argument name or position of the path};
     a folder there means every file in it.
-    code_in_strings: calls inside string literals count too (shell scripts, Snakemake: rules.CODE_IN_STRINGS)."""
+    code_in_strings: calls inside string literals count too (shell scripts, Snakemake: rules.CODE_IN_STRINGS).
+    snakemake: also the files declared by rules (rules.SNAKEMAKE_SCRIPTS)."""
     writers = writers or {}
     v = dict(v0 or {})
     ev, names, uses = [], set(), set()
@@ -240,6 +261,7 @@ def generic_scan(code, v0=None, stmts=None, vars_only=False, writers=None, code_
             v[m.group(1)] = val
             if not vars_only and FILE_LIKE.search(val) and len(val.replace("*", "")) >= 3 and "://" not in val:
                 ev.append((val, "mention", snippet(st, val)))
+    if snakemake and not vars_only: ev += snakemake_files(code, v)
     return {"ev": sorted(set(ev)), "names": names, "uses": uses, "vars": v, "stmts": stmts}
 
 
@@ -468,7 +490,8 @@ def _parse2(job):
     """second pass: evidence, with the variables inherited from source()d / imported scripts"""
     s, v0, stmts, writers = job
     g = generic_scan(read_code(s)[0], v0, stmts=stmts, writers=writers,
-                     code_in_strings=s.lower().endswith(rules.CODE_IN_STRINGS))
+                     code_in_strings=s.lower().endswith(rules.CODE_IN_STRINGS),
+                     snakemake=s.lower().endswith(rules.SNAKEMAKE_SCRIPTS))
     return [list(e) for e in g["ev"]], sorted(g["names"])
 
 def pmap(fn, items):
