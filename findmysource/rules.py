@@ -52,6 +52,7 @@ DIRECTION_EXAMPLES = [  # (call, direction): checked by tests/test_rules.py
     ("lapply(read_files, print)", "mention"),  # only the function's position decides, not a data name
     ("sapply(X = files, FUN = readRDS)", "read"),
     ("lapply(X = files, readRDS)", "read"),  # a named data argument frees its position
+    ("lapply(files, read_data, x = TRUE)", "read"),  # x= is passed on to read_data, it is no data formal
     ("mapply(read_data, x = files)", "read"),  # the function comes first: nothing before it to free
     ("lapply(files, FUN = show, readRDS)", "mention"),  # a named FUN wins; readRDS goes to show() through ...
 ]
