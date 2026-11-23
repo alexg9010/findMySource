@@ -155,11 +155,12 @@ def statements(code):
 def direction(fn, args):
     if any(WRITE_MODE.match(a) for a in args): return "write"
     if any(READ_MODE.match(a) for a in args): return "read"
-    parts = re.split(r"[.:$]", fn.rsplit("::", 1)[-1])
+    name = fn.rsplit("::", 1)[-1]
+    parts, dot = re.split(r"[.:$]", name), name.split(".")  # dot: verb.object is R's dot form only, not write$plot
     if WRITE_VERB.search(parts[-1]): return "write"
     if READ_VERB.search(parts[-1]): return "read"
-    if len(parts) > 1 and parts[0] in rules.DOTTED_WRITE_WORDS: return "write"  # R: write.fst()
-    if len(parts) > 1 and parts[0] in rules.DOTTED_READ_WORDS: return "read"  # R: read.csv()
+    if len(dot) > 1 and dot[0] in rules.DOTTED_WRITE_WORDS: return "write"  # R: write.fst()
+    if len(dot) > 1 and dot[0] in rules.DOTTED_READ_WORDS: return "read"  # R: read.csv()
     return "mention"
 
 def snippet(st, p):
