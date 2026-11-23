@@ -46,6 +46,9 @@ DIRECTION_EXAMPLES = [  # (call, direction): checked by tests/test_rules.py
     ('open("data/x.txt")', "read"),
     ('plot_volcano("out/x.pdf")', "mention"),  # unknown verb: only a mention
 ]
+# languages whose ordinary strings may span lines ("first\nline."). Not Python (only triple quotes do), Julia or
+# MATLAB (' is also an operator there).
+MULTILINE_STRINGS = (".r", ".rmd", ".qmd")
 STRING_EXAMPLES = [  # same format as the evidence examples: a call inside a string is text, except in shell scripts
     {"why": "a call written inside a string is text in R and Python",
      "files": {"a.R": "example <- 'saveRDS(x, \"out/a.rds\")'\n", "b.py": "doc = 'df.to_csv(\"out/b.csv\")'\n",
@@ -79,6 +82,12 @@ STRING_EXAMPLES = [  # same format as the evidence examples: a call inside a str
      "files": {"fms.json": '{"write_functions": {"convert_all": 0}}',
                "w.R": "example <- 'convert_all(\"figs\")'\nconvert_all(\"plots\")\n", "figs/a.png": "", "plots/b.png": ""},
      "links": {"figs/a.png": "", "plots/b.png": "w.R write-glob"}},
+    {"why": "an R string can span lines: its closing quote does not open a new string",
+     "files": {"a.R": "note <- \"first\nline.\"; saveRDS(x, \"out/a.rds\")\n", "out/a.rds": ""},
+     "links": {"out/a.rds": "a.R write"}},
+    {"why": "a call in an R string that spans lines is text too",
+     "files": {"b.R": "msg <- 'first\nsaveRDS(x, \"out/b.rds\")'\n", "out/b.rds": ""},
+     "links": {"out/b.rds": ""}},
     {"why": "a shell script runs code from strings",
      "files": {"run.sh": "python -c \"df.to_csv('out/c.csv')\"\n", "out/c.csv": ""},
      "links": {"out/c.csv": "run.sh write"}},
