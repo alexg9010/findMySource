@@ -30,6 +30,8 @@ index.html; the user cache if the project is not writable). README.md describes 
 
 ## Check before committing
 
+TESTING.md explains the test layers and how to change matching code safely.
+
 ```bash
 uvx pytest -q                 # all tests; CI also runs Python 3.8-3.14
 uv run tests/visual.py        # if view.html or graph output changed
