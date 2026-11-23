@@ -7,6 +7,10 @@ a patch bump (0.x.y) covers everything else, new features included.
 
 ## Unreleased
 
+- R functions named verb.object (`read.csv`, `write.fst`, `import.bed`) are read as reads and writes by the
+  general engine, not only when the R fallback knows them. A script that reads a file through one of them
+  is no longer listed as its source.
+
 ## 0.3.2 (2026-11-23)
 
 - `write_functions` in `fms.json`: your own functions that write files without a write verb in their name,

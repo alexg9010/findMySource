@@ -18,6 +18,10 @@ SCRIPT_ONLY_EXCLUDE = ["build", "dist"]  # copies of scripts made by Python pack
 # regular expressions, matched anywhere in the last part of the call name (pd.DataFrame.to_csv -> to_csv)
 WRITE_VERBS = ["save", "write", "dump", "export", "^to_", "store", "sink", "serial"]
 READ_VERBS = ["read", "load", "open", "source", "import", "input", "scan", "include", "fetch"]
+# R names verb.object (read.csv, write.fst, save.image): when the last part has no verb, a first part that is
+# exactly one of these words decides. Exact words only, so Python objects such as reader.plot() stay mentions.
+DOTTED_WRITE_WORDS = ["write", "save", "export", "dump"]
+DOTTED_READ_WORDS = ["read", "load", "import"]
 # an open()-style mode argument overrides the name: open(p, "w") writes although "open" reads
 WRITE_MODES = ["w", "wb", "wt", "w+", "a", "ab", "a+", "x"]
 READ_MODES = ["r", "rb", "rt", "r+"]
@@ -27,8 +31,12 @@ DIRECTION_EXAMPLES = [  # (call, direction): checked by tests/test_rules.py
     ('json.dump(d, open("out/x.json", "w"))', "write"),
     ('open("out/log.txt", mode="a")', "write"),
     ('readRDS("data/x.rds")', "read"),
-    # the last part after a dot is the name: read.csv -> "csv", no verb. The R fallback (R_READ) reads it.
-    ('read.csv("data/x.csv")', "mention"),
+    ('read.csv("data/x.csv")', "read"),  # R verb.object: the first part decides
+    ('write.fst(df, "out/x.fst")', "write"),
+    ('read.dcf("DESCRIPTION.dcf")', "read"),
+    ('reader.plot("out/x.png")', "mention"),  # an object, not a verb: only exact words count
+    ('write$plot("out/x.png")', "mention"),  # R list member, not verb.object: only the dot form counts
+    ('read$plot("out/x.png")', "mention"),
     ('np.load("data/x.npy")', "read"),
     ('open("data/x.txt")', "read"),
     ('plot_volcano("out/x.pdf")', "mention"),  # unknown verb: only a mention
