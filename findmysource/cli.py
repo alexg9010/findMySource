@@ -157,8 +157,10 @@ QUOTED = re.compile(r"""(?<!\w)([rRbBuUfF]{0,2})("{3}[\s\S]*?"{3}|'{3}[\s\S]*?'{
 def blank(m):
     """the string's text as spaces, same length and lines (offsets stay valid); an f-string keeps its {...} fields"""
     p, q = m.groups()
-    keep = r"(\{\{|\}\})|(\{(?:[^{}]|\{[^{}]*\})*\})|[^\n]" if "f" in p.lower() else r"()()[^\n]"  # {x:{width}} nests once
-    return p + q[0] + re.sub(keep, lambda x: x.group(2) or " " * len(x.group()), q[1:-1]) + q[-1]
+    f = "f" in p.lower()
+    keep = r"(\{\{|\}\})|(\{(?:[^{}]|\{[^{}]*\})*\})|[^\n]" if f else r"()()[^\n]"  # {x:{width}} nests once
+    body = QUOTED.sub(blank, q[1:-1]) if f else q[1:-1]  # f-string: strings inside its fields are text, braces too
+    return p + q[0] + re.sub(keep, lambda x: x.group(2) or " " * len(x.group()), body) + q[-1]
 
 
 def direction(fn, args):
