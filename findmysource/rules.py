@@ -84,6 +84,33 @@ STRING_EXAMPLES = [  # same format as the evidence examples: a call inside a str
      "links": {"out/c.csv": "run.sh write"}},
 ]
 
+# shell command lines (shell scripts, Snakemake shell:, Makefile recipes): no calls, so words are read like a shell
+SHELL_SCRIPTS = (".sh", ".smk", "snakefile", "makefile")
+SHELL_WRITE_FLAGS = ["-o", "-O", "--output", "--out", "--outfile", "--output-file", "--output-document"]
+SHELL_WRITE_COMMANDS = ["tee"]  # every file argument is written
+SHELL_EXAMPLES = [  # same format as the evidence examples
+    {"why": "a redirection writes (> >> &> 2>) or reads (<) the next word",
+     "files": {"run.sh": "sort < data/in.txt > out/sorted.txt 2>> out/err.log\n",
+               "data/in.txt": "", "out/sorted.txt": "", "out/err.log": ""},
+     "links": {"data/in.txt": "", "out/sorted.txt": "run.sh write", "out/err.log": "run.sh write"}},
+    {"why": "an output flag writes its argument, also as --flag=path; a URL is never a file",
+     "files": {"get.sh": "curl -L -o data/genome.fa.gz https://x.org/genome.fa.gz\n"
+                         "wget -O data/genes.gtf https://x.org/genes.gtf\nsamtools sort --output=out/a.bam in.bam\n",
+               "data/genome.fa.gz": "", "data/genes.gtf": "", "out/a.bam": "", "in.bam": ""},
+     "links": {"data/genome.fa.gz": "get.sh write", "data/genes.gtf": "get.sh write", "out/a.bam": "get.sh write",
+               "in.bam": "get.sh mention"}},
+    {"why": "shell variables are expanded, and an unquoted assignment is text, not an expression",
+     "files": {"v.sh": "OUT=results/qc\nfastqc x.fq -o $OUT\necho done | tee \"${OUT}/done.txt\"\n",
+               "results/qc/done.txt": ""},
+     "links": {"results/qc/done.txt": "v.sh write"}},
+    {"why": "a Snakemake shell: command is a command line too",
+     "files": {"Snakefile": "rule a:\n    shell: \"bedtools sort -i x.bed > out/s.bed\"\n", "out/s.bed": ""},
+     "links": {"out/s.bed": "Snakefile write"}},
+    {"why": "only shell-like scripts: in R and Python > is a comparison",
+     "files": {"c.R": "if (n > 3) x <- 1\nprint(n > out.txt)\n", "out.txt": ""},
+     "links": {"out.txt": ""}},
+]
+
 # ---------- path builders, recognised by the shape of their name in any language ----------
 JOIN_CALLS = ["file.path", "path", "join", "joinpath", "path_join", "here"]  # parts joined with "/"
 CONCAT_CALLS = ["paste0", "str_c", "stri_c", "concat", "stri_paste"]  # parts glued together
