@@ -193,23 +193,37 @@ def snippet(st, p):
     return (hit if hit == lines[0] else f"{lines[0][:60]} … {hit}")[:200]
 
 SNAKE_DIRECTIVE = re.compile(r"^(\s*)(\w+):(.*)$")
-SNAKE_STR = re.compile(r"""[rRfF]?(["'])(?:[^"'\\\n]|\\.)*?\1""")
 
-def snakemake_files(code, v):
-    """Snakemake rules -> [(path, write|read, line)]: files in output:/log:/benchmark: (write) and input: (read),
-    on the directive's line and the more indented lines below it; {wildcards} become *."""
-    ev, kind, ind = [], None, 0
+def snakemake_files(code, v0=None):
+    """Snakemake rules -> [(path, write|read, line)]: files in output:/log:/benchmark: (write) and input: (read).
+    A directive runs from its line over the more indented lines below it; comments are not part of it. Each file is
+    one expression, evaluated with the variables assigned above it; temp("x") and the like are unwrapped, {wildcards}
+    become *."""
+    ev, v, block = [], dict(v0 or {}), None  # block: [kind, indent, lines]
+
+    def flush():
+        if not (block and block[0]): return
+        for a in split_call("f(" + "\n".join(block[2]) + ")", 2)[0]:
+            a = NAMED.sub("", a, count=1)
+            m = re.match(r"\s*([\w.]+)\s*\(", a)
+            while m and m.group(1).rsplit(".", 1)[-1] in rules.SNAKEMAKE_WRAPPERS:  # temp("x"), expand("x", s=S)
+                a = next((x for x in split_call(a, m.end())[0] if not NAMED.match(x)), "")
+                m = re.match(r"\s*([\w.]+)\s*\(", a)
+            p = re.sub(r"\{[^{}]*\}", "*", evaluate(a, v))
+            if FILE_LIKE.search(p) and len(p.replace("*", "")) >= 3 and "://" not in p:
+                ev.append((p, block[0], snippet("\n".join(block[2]), p)))
+
     for line in code.split("\n"):
-        if not line.strip(): continue
+        line = line[:next((t.start() for t in LEX_RE.finditer(line) if t.group()[0] == "#"), len(line))].rstrip()
+        if not line.strip(): continue  # blank or comment: a directive goes on
         m, cur = SNAKE_DIRECTIVE.match(line), len(line) - len(line.lstrip())
-        if m: text, ind, kind = m.group(3), cur, ("write" if m.group(2) in rules.SNAKEMAKE_WRITE else
-                                                 "read" if m.group(2) in rules.SNAKEMAKE_READ else None)
-        elif kind and cur > ind: text = line
-        else: kind = None; continue
-        for t in SNAKE_STR.finditer(text):
-            p = re.sub(r"\{[^{}]*\}", "*", evaluate(t.group(), v))
-            if kind and FILE_LIKE.search(p) and len(p.replace("*", "")) >= 3 and "://" not in p:
-                ev.append((p, kind, " ".join(line.split())))
+        if block and cur > block[1] and not m: block[2].append(line); continue
+        flush()
+        block = [("write" if m.group(2) in rules.SNAKEMAKE_WRITE else "read" if m.group(2) in rules.SNAKEMAKE_READ
+                  else None), cur, [m.group(3)]] if m else None
+        a = GEN_ASG.match(line) if not m and cur == 0 else None
+        if a: v[a.group(1)] = evaluate(a.group(2), v)  # top-level variables, in file order
+    flush()
     return ev
 
 def generic_scan(code, v0=None, stmts=None, vars_only=False, writers=None, code_in_strings=False, snakemake=False):
@@ -261,7 +275,7 @@ def generic_scan(code, v0=None, stmts=None, vars_only=False, writers=None, code_
             v[m.group(1)] = val
             if not vars_only and FILE_LIKE.search(val) and len(val.replace("*", "")) >= 3 and "://" not in val:
                 ev.append((val, "mention", snippet(st, val)))
-    if snakemake and not vars_only: ev += snakemake_files(code, v)
+    if snakemake and not vars_only: ev += snakemake_files(code, v0)
     return {"ev": sorted(set(ev)), "names": names, "uses": uses, "vars": v, "stmts": stmts}
 
 

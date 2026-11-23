@@ -88,6 +88,7 @@ STRING_EXAMPLES = [  # same format as the evidence examples: a call inside a str
 SNAKEMAKE_SCRIPTS = (".smk", "snakefile")
 SNAKEMAKE_WRITE = ["output", "log", "benchmark"]
 SNAKEMAKE_READ = ["input"]
+SNAKEMAKE_WRAPPERS = ["temp", "protected", "directory", "touch", "ancient", "pipe", "expand", "report"]  # file: 1st arg
 SNAKEMAKE_EXAMPLES = [  # same format as the evidence examples
     {"why": "output: declares what a rule writes, {wildcards} match any name",
      "files": {"Snakefile": "rule qc:\n    input: \"data/{s}.fq\"\n    output: \"out/{s}_qc.html\"\n    shell: \"qc {input}\"\n",
