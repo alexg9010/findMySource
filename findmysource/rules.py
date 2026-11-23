@@ -128,6 +128,18 @@ SNAKEMAKE_EXAMPLES = [  # same format as the evidence examples
                             "rule qc:\n    output: f\"{OUT}/report.txt\"\n",
                "results/qc/report.txt": "", "results/report.txt": ""},
      "links": {"results/qc/report.txt": "Snakefile write", "results/report.txt": ""}},
+    {"why": "parentheses around a file are only grouping",
+     "files": {"Snakefile": "rule p:\n    output: (\"out/p.txt\")\n", "out/p.txt": ""},
+     "links": {"out/p.txt": "Snakefile write"}},
+    {"why": "a declared output needs no extension: a flag file, or a directory() and the files in it",
+     "files": {"Snakefile": "rule s:\n    output: \"results/SUCCESS\", directory(\"results/qc\")\n",
+               "results/SUCCESS": "", "results/qc/a.html": ""},
+     "links": {"results/SUCCESS": "Snakefile write", "results/qc/a.html": "Snakefile write-glob"}},
+    {"why": "comments inside a multi-line assignment are not part of it",
+     "files": {"Snakefile": "import os\nOUT = os.path.join(\n    \"results\",  # root\n    \"qc\")\n"
+                            "rule qc:\n    output: f\"{OUT}/report.txt\"\n",
+               "results/qc/report.txt": "", "results/other/report.txt": ""},
+     "links": {"results/qc/report.txt": "Snakefile write", "results/other/report.txt": ""}},
     {"why": "a rule that collects with expand() reads; the rule that makes the files is the source",
      "files": {"Snakefile": "rule all:\n    input: expand(\"out/{s}.txt\", s=S)\n"
                             "rule make:\n    output: \"out/{s}.txt\"\n", "out/a.txt": ""},
