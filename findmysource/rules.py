@@ -100,6 +100,18 @@ SNAKEMAKE_EXAMPLES = [  # same format as the evidence examples
                "out/x.bam": "", "out/x.bam.bai": "", "logs/align.log": "", "out/not_a_file.txt": ""},
      "links": {"out/x.bam": "rules/align.smk write", "out/x.bam.bai": "rules/align.smk write",
                "logs/align.log": "rules/align.smk write", "out/not_a_file.txt": ""}},  # params: declares no file
+    {"why": "a comment inside a directive declares nothing",
+     "files": {"Snakefile": "rule a:\n    output:\n        # \"data/raw.csv\" is an input\n        \"out/a.csv\"\n",
+               "data/raw.csv": "", "out/a.csv": ""},
+     "links": {"data/raw.csv": "", "out/a.csv": "Snakefile write"}},
+    {"why": "a declared file is a whole expression, not each string in it",
+     "files": {"Snakefile": "import os\nrule r:\n    output: os.path.join(\"results\", \"report.csv\")\n",
+               "results/report.csv": "", "archive/report.csv": ""},
+     "links": {"results/report.csv": "Snakefile write", "archive/report.csv": ""}},
+    {"why": "a directive uses the variables as they are at that point of the file",
+     "files": {"Snakefile": "OUT = \"first\"\nrule a:\n    output: f\"{OUT}/report.txt\"\nOUT = \"second\"\n",
+               "first/report.txt": "", "second/report.txt": ""},
+     "links": {"first/report.txt": "Snakefile write", "second/report.txt": ""}},
     {"why": "a rule that collects with expand() reads; the rule that makes the files is the source",
      "files": {"Snakefile": "rule all:\n    input: expand(\"out/{s}.txt\", s=S)\n"
                             "rule make:\n    output: \"out/{s}.txt\"\n", "out/a.txt": ""},
