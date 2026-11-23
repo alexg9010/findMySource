@@ -213,11 +213,12 @@ def shell_words(st, v):
     """a command line -> [(path, write|read|mention, statement)]: redirections, output flags (-o x, --output=x),
     tee's files, and any other file-like word as a mention. A quoted word is one word, except after Snakemake's
     shell: or -c (bash -c "..."), where it is a command line itself."""
-    words, child = shell_split(st), dict(v)  # child: the variables of a child shell (bash -c "...", shell: "...")
-    words = [(x, sub) for i, w in enumerate(words) for sub in [i and words[i - 1] in ("shell:", "-c") and re.search(r"\s", w)]
+    words, child, group = shell_split(st), None, 0  # child: the variables of a child shell (bash -c "...", shell: "...")
+    words = [(x, sub) for i, w in enumerate(words) for sub in [i if i and words[i - 1] in ("shell:", "-c") and re.search(r"\s", w) else 0]
              for x in (shell_split(w) if sub else [w])]
     ev, nxt, tee, cmd, back = [], None, False, True, False  # back: the command comes after this word
     for i, (w, sub) in enumerate(words):
+        if sub and sub != group: child, group = dict(v), sub  # a new child shell starts from the variables now
         vs = child if sub else v
         kind, nxt = nxt, None
         if w in ("|", ";", "&&", "||", "shell:", "-c"): tee, cmd = False, True; continue  # next word: a command
@@ -289,8 +290,9 @@ def generic_scan(code, v0=None, stmts=None, vars_only=False, writers=None, code_
         if m:
             words = shell_split(m.group(2)) if shell and re.match(r"\s*(?:export\s+|local\s+)?[\w.]+=\S", st) else []
             # OUT=results/qc (shell, no spaces) is text; OUT = BASE (Python in a Snakefile) an expression
-            val = shell_expand(words[0], before) if words[1:2] in ([], [";"], ["&&"], ["||"], ["|"]) and words else evaluate(m.group(2), before)
-            v[m.group(1)] = val
+            own = words[1:2] in ([], [";"], ["&&"], ["||"], ["|"]) and words  # OUT=x alone or before ;
+            val = shell_expand(words[0], before) if own else evaluate(m.group(2), before)
+            if not (own and not vars_only): v[m.group(1)] = val  # else shell_words already set it, in line order
             if not vars_only and FILE_LIKE.search(val) and len(val.replace("*", "")) >= 3 and "://" not in val:
                 ev.append((val, "mention", snippet(st, val)))
     return {"ev": sorted(set(ev)), "names": names, "uses": uses, "vars": v, "stmts": stmts}

@@ -141,7 +141,7 @@ SHELL_EXAMPLES = [  # same format as the evidence examples
      "files": {"j.sh": "OUT=old\nOUT=new; bash -c \"printf x > $OUT/a.txt\"\n"
                        "bash -c 'X=first; true'; bash -c 'printf x > \"out/$X/r.txt\"'\n",
                "new/a.txt": "", "old/a.txt": "", "out/first/r.txt": ""},
-     "links": {"new/a.txt": "j.sh write", "old/a.txt": "", "out/first/r.txt": ""}},
+     "links": {"new/a.txt": "j.sh write", "old/a.txt": "", "out/first/r.txt": "j.sh write-glob"}},  # $X unknown: out/*/
     {"why": "the last of several assignments on a line holds",
      "files": {"y.sh": "OUT=old; OUT=new\nprintf x > \"$OUT/a.txt\"\n", "new/a.txt": "", "old/a.txt": ""},
      "links": {"new/a.txt": "y.sh write", "old/a.txt": ""}},
