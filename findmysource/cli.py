@@ -198,14 +198,15 @@ SHELL_OPS = re.compile(r"""("(?:[^"\\]|\\.)*"|'[^']*'|\\.)|(?:\d|&)?(?:>>?|<)\|?
 
 def shell_split(s):
     """shell words; operators outside quotes are words of their own (x>out.txt -> x > out.txt), and $(...) / `...`
-    is one run-time part (${__}, unknown) even with spaces inside"""
-    s = re.sub(r"\$\([^()]*\)|`[^`]*`", "${__}", s)
+    is one run-time part (\0, unknown) even with spaces inside"""
+    s = re.sub(r"\$\([^()]*\)|`[^`]*`", "\0", s)
     s = SHELL_OPS.sub(lambda m: m.group() if m.group(1) else " " + m.group() + " ", s)
     try: return shlex.split(s)
     except ValueError: return s.split()  # unbalanced quote
 
 def shell_expand(w, v):
     """$x, ${x} -> value of x; $(...), `...` and unknown variables -> '*'"""
+    w = w.replace("\0", "*")  # a substitution, see shell_split
     return re.sub(r"\$\{?(\w+)\}?", lambda m: v.get(m.group(1), "*"), re.sub(r"\$\([^)]*\)|`[^`]*`", "*", w))
 
 def shell_words(st, v):
@@ -216,11 +217,13 @@ def shell_words(st, v):
     words = [x for i, w in enumerate(words)
              for x in (shell_split(w) if i and words[i - 1] in ("shell:", "-c") and re.search(r"\s", w) else [w])]
     ev, nxt, tee, cmd, back = [], None, False, True, False  # back: the command comes after this word
-    for w in words:
+    for i, w in enumerate(words):
         kind, nxt = nxt, None
         if w in ("|", ";", "&&", "||", "shell:", "-c"): tee, cmd = False, True; continue  # next word: a command
         at_cmd, cmd, back = cmd, back, False
-        if at_cmd and kind is None and re.match(r"^\w+=", w): cmd = True; continue  # LC_ALL=C tee x
+        if at_cmd and kind is None and re.match(r"^\w+=", w):  # LC_ALL=C tee x; OUT=new; ... holds from here on
+            if i + 1 == len(words) or words[i + 1] in ("|", ";", "&&", "||"): v[w.split("=")[0]] = shell_expand(w.split("=", 1)[1], v)
+            cmd = True; continue
         if kind is None:
             m = SHELL_REDIR.match(w)
             if m:  # > log.txt tee x: a redirection before the command keeps its place
@@ -232,7 +235,7 @@ def shell_words(st, v):
             elif at_cmd and os.path.basename(w) in rules.SHELL_WRITE_COMMANDS: tee = True; continue
         p = shell_expand(w, v)
         kind = kind or ("write" if tee and not w.startswith("-") else "mention")
-        if kind == "mention" and "$" in w: continue  # a variable's own assignment already mentions it
+        if kind == "mention" and ("$" in w or "\0" in w): continue  # a variable's own assignment already mentions it
         if FILE_LIKE.search(p) and len(p.replace("*", "")) >= 3 and "://" not in p: ev.append((p, kind, snippet(st, p)))
     return ev
 
@@ -284,7 +287,7 @@ def generic_scan(code, v0=None, stmts=None, vars_only=False, writers=None, code_
         if m:
             words = shell_split(m.group(2)) if shell and re.match(r"\s*(?:export\s+|local\s+)?[\w.]+=\S", st) else []
             # OUT=results/qc (shell, no spaces) is text; OUT = BASE (Python in a Snakefile) an expression
-            val = shell_expand(words[0], v) if len(words) == 1 else evaluate(m.group(2), v)
+            val = shell_expand(words[0], v) if words[1:2] in ([], [";"], ["&&"], ["||"], ["|"]) and words else evaluate(m.group(2), v)
             v[m.group(1)] = val
             if not vars_only and FILE_LIKE.search(val) and len(val.replace("*", "")) >= 3 and "://" not in val:
                 ev.append((val, "mention", snippet(st, val)))
