@@ -213,16 +213,17 @@ def shell_words(st, v):
     """a command line -> [(path, write|read|mention, statement)]: redirections, output flags (-o x, --output=x),
     tee's files, and any other file-like word as a mention. A quoted word is one word, except after Snakemake's
     shell: or -c (bash -c "..."), where it is a command line itself."""
-    words = shell_split(st)
-    words = [x for i, w in enumerate(words)
-             for x in (shell_split(w) if i and words[i - 1] in ("shell:", "-c") and re.search(r"\s", w) else [w])]
+    words, child = shell_split(st), dict(v)  # child: the variables of a child shell (bash -c "...", shell: "...")
+    words = [(x, sub) for i, w in enumerate(words) for sub in [i and words[i - 1] in ("shell:", "-c") and re.search(r"\s", w)]
+             for x in (shell_split(w) if sub else [w])]
     ev, nxt, tee, cmd, back = [], None, False, True, False  # back: the command comes after this word
-    for i, w in enumerate(words):
+    for i, (w, sub) in enumerate(words):
+        vs = child if sub else v
         kind, nxt = nxt, None
         if w in ("|", ";", "&&", "||", "shell:", "-c"): tee, cmd = False, True; continue  # next word: a command
         at_cmd, cmd, back = cmd, back, False
         if at_cmd and kind is None and re.match(r"^\w+=", w):  # LC_ALL=C tee x; OUT=new; ... holds from here on
-            if i + 1 == len(words) or words[i + 1] in ("|", ";", "&&", "||"): v[w.split("=")[0]] = shell_expand(w.split("=", 1)[1], v)
+            if i + 1 == len(words) or words[i + 1][0] in ("|", ";", "&&", "||"): vs[w.split("=")[0]] = shell_expand(w.split("=", 1)[1], vs)
             cmd = True; continue
         if kind is None:
             m = SHELL_REDIR.match(w)
@@ -233,7 +234,7 @@ def shell_words(st, v):
             elif w in rules.SHELL_WRITE_FLAGS: nxt = "write"; continue
             elif w.split("=", 1)[0] in rules.SHELL_WRITE_FLAGS and "=" in w: kind, w = "write", w.split("=", 1)[1]
             elif at_cmd and os.path.basename(w) in rules.SHELL_WRITE_COMMANDS: tee = True; continue
-        p = shell_expand(w, v)
+        p = shell_expand(w, vs)
         kind = kind or ("write" if tee and not w.startswith("-") else "mention")
         if kind == "mention" and ("$" in w or "\0" in w): continue  # a variable's own assignment already mentions it
         if FILE_LIKE.search(p) and len(p.replace("*", "")) >= 3 and "://" not in p: ev.append((p, kind, snippet(st, p)))
@@ -251,6 +252,7 @@ def generic_scan(code, v0=None, stmts=None, vars_only=False, writers=None, code_
     ev, names, uses = [], set(), set()
     stmts = statements(code) if stmts is None else stmts
     for st in stmts:
+        before = v  # the variables before this statement: its own assignment is expanded with them, once
         for m in re.finditer(r"""["']([^"'\n]+)["']""", st):  # scripts referenced by name (source("x.R"), "python y.py")
             words = m.group(1).split()
             if words and words[-1].lower().endswith(SCRIPT_EXT): uses.add(os.path.basename(words[-1]))
@@ -282,12 +284,12 @@ def generic_scan(code, v0=None, stmts=None, vars_only=False, writers=None, code_
                     lit = re.fullmatch(r"""\s*["']([\w.\-]{4,})["']\s*""", a)
                     if lit and kind == "write" and not FILE_LIKE.search(lit.group(1)):
                         names.add(lit.group(1))  # save_table(df, "de_table") -> de_table.*
-            if shell: ev += shell_words(st, v)
+            if shell: before = dict(v); ev += shell_words(st, v)
         m = GEN_ASG.match(st)
         if m:
             words = shell_split(m.group(2)) if shell and re.match(r"\s*(?:export\s+|local\s+)?[\w.]+=\S", st) else []
             # OUT=results/qc (shell, no spaces) is text; OUT = BASE (Python in a Snakefile) an expression
-            val = shell_expand(words[0], v) if words[1:2] in ([], [";"], ["&&"], ["||"], ["|"]) and words else evaluate(m.group(2), v)
+            val = shell_expand(words[0], before) if words[1:2] in ([], [";"], ["&&"], ["||"], ["|"]) and words else evaluate(m.group(2), before)
             v[m.group(1)] = val
             if not vars_only and FILE_LIKE.search(val) and len(val.replace("*", "")) >= 3 and "://" not in val:
                 ev.append((val, "mention", snippet(st, val)))
