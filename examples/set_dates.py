@@ -34,5 +34,5 @@ def main(project):
 
 
 if __name__ == "__main__":
-    for p in sys.argv[1:] or ["examples/r-project", "examples/python-project"]:
+    for p in sys.argv[1:] or ["examples/r-project", "examples/python-project", "examples/multi-project"]:
         main(p)

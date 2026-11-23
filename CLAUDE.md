@@ -12,8 +12,9 @@ index.html; the user cache if the project is not writable). README.md describes 
   (`parse_script`), path resolution (`make_norm`), matching and ranking (`RANK`), `scan()` writes the
   report, `query()` answers `fms <file|folder|script>`.
 - `findmysource/view.html`: the report, one self-contained page; `scan()` injects the graph.
-- `examples/{r-project,python-project}`: test projects; `expected.json` is the ground truth.
+- `examples/{r-project,python-project,multi-project}`: test projects; `expected.json` is the ground truth.
   `examples/set_dates.py` gives their files realistic dates (git does not keep mtimes).
+- `docs/site.py`: the GitHub Pages site, with a report per example built by the current code (`pages.yml`, on push to main).
 - `tests/`: `test_core.py` (engine), `test_cli.py` (queries), `test_examples.py` (ground truth),
   `visual.py` (report in a real browser).
 

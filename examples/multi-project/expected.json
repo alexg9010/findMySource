@@ -1,0 +1,65 @@
+{
+  "_comment": "Ground truth: which script really writes each output. [] = no script (raw data, orphans). 'stale' outputs get a date before their script's last change (see examples/set_dates.py).",
+  "outputs": {
+    "results/counts/S1.tsv": [
+      "pipeline/01_count.py"
+    ],
+    "results/counts/S2.tsv": [
+      "pipeline/01_count.py"
+    ],
+    "results/counts/S3.tsv": [
+      "pipeline/01_count.py"
+    ],
+    "results/counts/summary.json": [
+      "pipeline/01_count.py"
+    ],
+    "results/counts/filtered/S1.parquet": [
+      "pipeline/02_filter.py"
+    ],
+    "results/counts/filtered/S2.parquet": [
+      "pipeline/02_filter.py"
+    ],
+    "results/counts/filtered/S3.parquet": [
+      "pipeline/02_filter.py"
+    ],
+    "results/stats/dds.rds": [
+      "analysis/02_normalize.R"
+    ],
+    "results/stats/size_factors.csv": [
+      "analysis/02_normalize.R"
+    ],
+    "analysis/03_report.html": [
+      "analysis/03_report.qmd"
+    ],
+    "analysis/03_report_files/figure-html/unnamed-chunk-1-1.png": [
+      "analysis/03_report.qmd"
+    ],
+    "figures/qc/dispersion.pdf": [
+      "analysis/03_report.qmd"
+    ],
+    "results/stats/survival.csv": [
+      "analysis/04_survival.jl"
+    ],
+    "results/stats/signal_smooth.csv": [
+      "analysis/05_signal.m"
+    ],
+    "figures/qc/signal.png": [
+      "analysis/05_signal.m"
+    ],
+    "figures/explore/size_factors.png": [
+      "notebooks/explore.ipynb"
+    ],
+    "notebooks/explore.html": [
+      "notebooks/explore.ipynb"
+    ],
+    "data/raw/clinical.csv": [],
+    "data/raw/signal.csv": [],
+    "data/reference/genes.gtf": [],
+    "data/reference/genome.fa.gz": [],
+    "figures/archive/poster_2024.pdf": [],
+    "reports/notes.docx": []
+  },
+  "stale": [
+    "figures/qc/signal.png"
+  ]
+}

@@ -4,7 +4,7 @@
 # ///
 """Screenshots of the report for the README, from examples/r-project.
 
-    uv run docs/screenshots.py          # -> docs/img/*.png, docs/img/demo.gif and docs/example-report/
+    uv run docs/screenshots.py          # -> docs/img/*.png and docs/img/demo.gif
 
 Same browser setup as tests/visual.py (CHROME=... or `uvx playwright@1.64.1 install chromium`).
 """
@@ -33,9 +33,6 @@ def main():
     subprocess.run([sys.executable, "-m", "findmysource", "--out", "fms-report"], cwd=proj, check=True,
                    env={**os.environ, "PYTHONPATH": REPO}, stdout=subprocess.DEVNULL)
     url = "file://" + os.path.join(proj, "fms-report", "index.html")
-    for f in ("index.html", "graph.json", "manifest.tsv"):  # the live example on GitHub Pages
-        txt = open(os.path.join(proj, "fms-report", f)).read().replace(os.path.realpath(proj), "examples/r-project")
-        open(os.path.join(REPO, "docs", "example-report", f), "w").write(txt)
     os.makedirs(OUT, exist_ok=True)
 
     with sync_playwright() as p:

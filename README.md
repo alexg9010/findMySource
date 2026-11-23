@@ -20,7 +20,8 @@
 <p align="center">
   <img src="docs/img/demo.gif" alt="The report for examples/r-project: clicking figures/qc/pca.png highlights its upstream chain and opens the details panel with the ggsave() line that wrote it and a possibly-stale warning; clicking 02_model.Rmd lists what it writes and reads; the Timeline shows the stale figure in red">
   <br><sub>The report for <a href="examples/r-project">examples/r-project</a>: one click on a figure shows the script and line that made it, and that it is out of date.
-  <a href="https://alexg9010.github.io/findMySource/example-report/">Open the live example report</a>.</sub>
+  Open the live reports for this <a href="https://alexg9010.github.io/findMySource/example-report/">R project</a> and a
+  <a href="https://alexg9010.github.io/findMySource/multi-project-report/">multi-language project</a>, rebuilt by every push to main.</sub>
 </p>
 
 Coming back to an analysis after months away, or preparing a figure for a paper,
@@ -66,7 +67,8 @@ A red dot left of the tick is an output written before the script was edited.
 
 <img src="docs/img/timeline.png" alt="Timeline tab: three scripts on a date axis; 01_load.R and 02_model.Rmd have green dots after their last change, 03_figures.R has one red dot a month earlier">
 
-<sub>Regenerate these, the animation and the live example report with <code>uv run docs/screenshots.py</code>.</sub>
+<sub>Regenerate these and the animation with <code>uv run docs/screenshots.py</code>. The live reports are built by
+<code>python docs/site.py</code> in <code>.github/workflows/pages.yml</code>.</sub>
 </details>
 
 `fms` needs no running pipeline, no workflow manager and no changes to your

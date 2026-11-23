@@ -1,0 +1,14 @@
+---
+title: "Normalisation report"
+---
+
+```{r}
+dds <- readRDS("../results/stats/dds.rds")
+plot(DESeq2::sizeFactors(dds))
+```
+
+```{r}
+pdf("../figures/qc/dispersion.pdf")
+DESeq2::plotDispEsts(dds)
+dev.off()
+```
