@@ -7,8 +7,10 @@ a patch bump (0.x.y) covers everything else, new features included.
 
 ## Unreleased
 
+## 0.3.2 (2026-11-23)
+
 - `write_functions` in `fms.json`: your own functions that write files without a write verb in their name,
-  e.g. `{"convert_all": "out_dir"}`. A folder argument covers every file in it.
+  e.g. `{"convert_all": "out_dir"}`. A folder argument covers the files directly in it.
 - `fms <file>` lists the scripts that were considered but not chosen, with the reason ("reads this
   file", "weaker than write"); `manifest.tsv` has them in a new last column, `not_chosen`.
 - Scripts that share an output with the same date (e.g. `a.Rmd` and `a.qmd` sharing `a_files/`) are
