@@ -44,6 +44,11 @@ DIRECTION_EXAMPLES = [  # (call, direction): checked by tests/test_rules.py
     ('read$plot("out/x.png")', "mention"),
     ('np.load("data/x.npy")', "read"),
     ('open("data/x.txt")', "read"),
+    ("open(my $out, '>', \"out/x.gff\")", "write"),  # Perl three-argument open: the mode decides
+    ("open(my $log, '>>', \"out/x.log\")", "write"),
+    ("open(my $in, '<', \"data/x.gtf\")", "read"),
+    ('open(OUT, ">out/x.txt")', "write"),  # Perl two-argument open: the mode is the start of the name
+    ('open(IN, "<data/x.txt")', "read"),
     ('plot_volcano("out/x.pdf")', "mention"),  # unknown verb: only a mention
 ]
 STRING_EXAMPLES = [  # same format as the evidence examples: a call inside a string is text, except in shell scripts
