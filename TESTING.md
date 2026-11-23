@@ -78,16 +78,20 @@ Real projects are scanned into a temporary report folder and never modified.
 at least one real project. Timings within about ±10% are noise.
 
 **A behaviour change** (a fix or a new rule) will change matches, and that's the point. Then:
-1. Add an example to `rules.py`, or a case to `test_rules.py`, that fails before the change.
+1. Add a case that fails before the change: an example in `rules.py`, a case in `test_rules.py` or
+   `test_core.py`, or a file in an example project plus its line in `expected.json` (CLAUDE.md asks for
+   one of these with every matching change).
 2. Run `bench.py --compare` on real projects and look at **every changed row**, not just the counts.
    Scan the project with both versions into temporary folders (`--out`) and diff the two `manifest.tsv`
    files row by row. Each change should be explainable; the `not_chosen` column usually says why a link
    disappeared. A lower `matched` count can be a fix: a reader that was wrongly listed as a source.
 3. Never weaken a test or `expected.json` to make a change pass.
 
-**Checking that a new test can fail:** commit or stash your work *first*, then break the code, run the
-test, and restore with `git restore` or `git stash pop`. Undoing a deliberate break with
-`git checkout <file>` on uncommitted work throws the work away too.
+**Checking that a new test can fail:** commit your work, the new test included, *first*. Then break the
+code, run the test, and undo the break with `git restore <file>`. Don't use `git stash` for this: it
+would put the new test away too (so the run checks nothing), and popping it onto a broken file can
+conflict. Undoing a break with `git checkout <file>` or `git restore <file>` on uncommitted work throws
+that work away too.
 
 ## Lessons from past bugs
 
