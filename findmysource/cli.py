@@ -194,10 +194,12 @@ def snippet(st, p):
 
 SHELL_REDIR = re.compile(r"^(?:\d|&)?(>>?|<)\|?(.*)$")  # > x, >>x, 2> x, &> x, < x
 
-SHELL_OPS = re.compile(r"""("(?:[^"\\]|\\.)*"|'[^']*')|(?:\d|&)?(?:>>?|<)\|?|\|\|?|;|&&""")
+SHELL_OPS = re.compile(r"""("(?:[^"\\]|\\.)*"|'[^']*'|\\.)|(?:\d|&)?(?:>>?|<)\|?|\|\|?|;|&&""")
 
 def shell_split(s):
-    """shell words; operators outside quotes are words of their own (x>out.txt -> x > out.txt)"""
+    """shell words; operators outside quotes are words of their own (x>out.txt -> x > out.txt), and $(...) / `...`
+    is one run-time part (${__}, unknown) even with spaces inside"""
+    s = re.sub(r"\$\([^()]*\)|`[^`]*`", "${__}", s)
     s = SHELL_OPS.sub(lambda m: m.group() if m.group(1) else " " + m.group() + " ", s)
     try: return shlex.split(s)
     except ValueError: return s.split()  # unbalanced quote
@@ -213,17 +215,18 @@ def shell_words(st, v):
     words = shell_split(st)
     words = [x for i, w in enumerate(words)
              for x in (shell_split(w) if i and words[i - 1] in ("shell:", "-c") and re.search(r"\s", w) else [w])]
-    ev, nxt, tee, cmd = [], None, False, True
+    ev, nxt, tee, cmd, back = [], None, False, True, False  # back: the command comes after this word
     for w in words:
         kind, nxt = nxt, None
         if w in ("|", ";", "&&", "||", "shell:", "-c"): tee, cmd = False, True; continue  # next word: a command
-        at_cmd, cmd = cmd, False
+        at_cmd, cmd, back = cmd, back, False
+        if at_cmd and kind is None and re.match(r"^\w+=", w): cmd = True; continue  # LC_ALL=C tee x
         if kind is None:
             m = SHELL_REDIR.match(w)
-            if m:
+            if m:  # > log.txt tee x: a redirection before the command keeps its place
                 kind = "read" if m.group(1) == "<" else "write"
-                if not m.group(2): nxt = kind; continue
-                w = m.group(2)
+                if not m.group(2): nxt, back = kind, at_cmd; continue
+                w, cmd = m.group(2), at_cmd
             elif w in rules.SHELL_WRITE_FLAGS: nxt = "write"; continue
             elif w.split("=", 1)[0] in rules.SHELL_WRITE_FLAGS and "=" in w: kind, w = "write", w.split("=", 1)[1]
             elif at_cmd and os.path.basename(w) in rules.SHELL_WRITE_COMMANDS: tee = True; continue
@@ -279,8 +282,9 @@ def generic_scan(code, v0=None, stmts=None, vars_only=False, writers=None, code_
             if shell: ev += shell_words(st, v)
         m = GEN_ASG.match(st)
         if m:
-            words = shell_split(m.group(2)) if shell else []
-            val = shell_expand(words[0], v) if len(words) == 1 else evaluate(m.group(2), v)  # OUT=results/qc is text
+            words = shell_split(m.group(2)) if shell and re.match(r"\s*(?:export\s+|local\s+)?[\w.]+=\S", st) else []
+            # OUT=results/qc (shell, no spaces) is text; OUT = BASE (Python in a Snakefile) an expression
+            val = shell_expand(words[0], v) if len(words) == 1 else evaluate(m.group(2), v)
             v[m.group(1)] = val
             if not vars_only and FILE_LIKE.search(val) and len(val.replace("*", "")) >= 3 and "://" not in val:
                 ev.append((val, "mention", snippet(st, val)))
