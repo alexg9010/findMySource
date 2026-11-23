@@ -199,7 +199,7 @@ def snakemake_files(code, v0=None):
     A directive runs from its line over the more indented lines below it; comments are not part of it. Each file is
     one expression, evaluated with the variables assigned above it; temp("x") and the like are unwrapped, {wildcards}
     become *."""
-    ev, v, block = [], dict(v0 or {}), None  # block: [kind, indent, lines]
+    ev, v, block = [], dict(v0 or {}), None  # block: [kind, indent, directive text, its lines as shown]
 
     def flush():
         if not (block and block[0]): return
@@ -211,16 +211,16 @@ def snakemake_files(code, v0=None):
                 m = re.match(r"\s*([\w.]+)\s*\(", a)
             p = re.sub(r"\{[^{}]*\}", "*", evaluate(a, v))
             if FILE_LIKE.search(p) and len(p.replace("*", "")) >= 3 and "://" not in p:
-                ev.append((p, block[0], snippet("\n".join(block[2]), p)))
+                ev.append((p, block[0], snippet("\n".join(block[3]), p)))
 
     for line in code.split("\n"):
         line = line[:next((t.start() for t in LEX_RE.finditer(line) if t.group()[0] == "#"), len(line))].rstrip()
         if not line.strip(): continue  # blank or comment: a directive goes on
         m, cur = SNAKE_DIRECTIVE.match(line), len(line) - len(line.lstrip())
-        if block and cur > block[1] and not m: block[2].append(line); continue
+        if block and cur > block[1] and not m: block[2].append(line); block[3].append(line.strip()); continue
         flush()
         block = [("write" if m.group(2) in rules.SNAKEMAKE_WRITE else "read" if m.group(2) in rules.SNAKEMAKE_READ
-                  else None), cur, [m.group(3)]] if m else None
+                  else None), cur, [m.group(3)], [line.strip()]] if m else None
         a = GEN_ASG.match(line) if not m and cur == 0 else None
         if a: v[a.group(1)] = evaluate(a.group(2), v)  # top-level variables, in file order
     flush()
