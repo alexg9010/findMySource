@@ -37,6 +37,11 @@ def test_evidence_examples():
     assert not bad, "\n".join(bad)
 
 
+def test_string_examples():
+    bad = [f"{x['why']}: {b}" for x in rules.STRING_EXAMPLES for b in check(x)]
+    assert not bad, "\n".join(bad)
+
+
 def test_arbitration_examples():
     bad = [f"{x['why']}: {b}" for x in rules.ARBITRATION_EXAMPLES for b in check(x)]
     assert not bad, "\n".join(bad)

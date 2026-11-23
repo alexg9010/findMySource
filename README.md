@@ -209,6 +209,8 @@ record how an output was made.
    - *read, load, open, import, include* → **read**
    - an `open()` mode such as `"w"` overrides the name.
    - Anything else is a weaker **mention**.
+   - A call written inside a string (`'saveRDS(x, "a.rds")'`) is text, not code, except in shell scripts,
+     Snakemake, Nextflow and Makefiles, which run code from strings (`Rscript -e "..."`).
 3. **Resolve paths.**
    - Relative paths are tried against the script's folder and the project root.
    - Symlinks and aliases are resolved, so that `results/x.rds` and `/data/…/x.rds` count as the same file.

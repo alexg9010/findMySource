@@ -7,6 +7,9 @@ a patch bump (0.x.y) covers everything else, new features included.
 
 ## Unreleased
 
+- A call written inside a string in R or Python (`'saveRDS(x, "a.rds")'`) no longer counts as a real call.
+  Shell scripts, Snakemake, Nextflow and Makefiles still count it: they run code from strings.
+
 ## 0.3.2 (2026-11-23)
 
 - `write_functions` in `fms.json`: your own functions that write files without a write verb in their name,

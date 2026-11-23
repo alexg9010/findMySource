@@ -12,7 +12,10 @@ NOTEBOOK_EXT = (".rmd", ".qmd", ".ipynb")  # rendered by knitr/Quarto/Jupyter: s
 # skipped everywhere unless fms.json sets "exclude": editor, RStudio and cache files
 EXCLUDE = ["rstudio-server-db", "rstudio_state", "__pycache__", "*_cache", "*.RData", ".Rhistory", "#*#", "%",
            ".DS_Store"]
-SCRIPT_ONLY_EXCLUDE = ["build", "dist"]  # copies of scripts made by Python packaging; outputs may live there
+SCRIPT_ONLY_EXCLUDE = ["build", "dist"]
+# scripts that run other code from strings (Rscript -e "...", python -c "...", Snakemake shell: "..."): calls
+# inside their string literals count. In all other scripts a string is text: 'saveRDS(x, "a.rds")' is no call.
+CODE_IN_STRINGS = (".sh", ".smk", ".nf", "snakefile", "makefile")  # copies of scripts made by Python packaging; outputs may live there
 
 # ---------- read or write: from the name of the call that holds the path, in any language ----------
 # regular expressions, matched anywhere in the last part of the call name (pd.DataFrame.to_csv -> to_csv)
@@ -32,6 +35,15 @@ DIRECTION_EXAMPLES = [  # (call, direction): checked by tests/test_rules.py
     ('np.load("data/x.npy")', "read"),
     ('open("data/x.txt")', "read"),
     ('plot_volcano("out/x.pdf")', "mention"),  # unknown verb: only a mention
+]
+STRING_EXAMPLES = [  # same format as the evidence examples: a call inside a string is text, except in shell scripts
+    {"why": "a call written inside a string is text in R and Python",
+     "files": {"a.R": "example <- 'saveRDS(x, \"out/a.rds\")'\n", "b.py": "doc = 'df.to_csv(\"out/b.csv\")'\n",
+               "out/a.rds": "", "out/b.csv": ""},
+     "links": {"out/a.rds": "", "out/b.csv": ""}},
+    {"why": "a shell script runs code from strings",
+     "files": {"run.sh": "python -c \"df.to_csv('out/c.csv')\"\n", "out/c.csv": ""},
+     "links": {"out/c.csv": "run.sh write"}},
 ]
 
 # ---------- path builders, recognised by the shape of their name in any language ----------
