@@ -266,6 +266,8 @@ pytest                           # or: python tests/test_core.py; python tests/t
 python tests/test_examples.py    # score on the example projects (expected.json = ground truth)
 ```
 
+[TESTING.md](TESTING.md) describes the test layers and how to change matching code safely.
+
 Benchmark: time per scan and per phase, peak memory, and a fingerprint of the matches, on the examples, a
 synthetic project and any real project you name (scanned into a temporary folder, so it is left untouched):
 ```bash
