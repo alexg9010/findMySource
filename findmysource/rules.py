@@ -15,7 +15,8 @@ EXCLUDE = ["rstudio-server-db", "rstudio_state", "__pycache__", "*_cache", "*.RD
 SCRIPT_ONLY_EXCLUDE = ["build", "dist"]
 # scripts that run other code from strings (Rscript -e "...", python -c "...", Snakemake shell: "..."): calls
 # inside their string literals count. In all other scripts a string is text: 'saveRDS(x, "a.rds")' is no call.
-CODE_IN_STRINGS = (".sh", ".smk", ".nf", "snakefile", "makefile")  # copies of scripts made by Python packaging; outputs may live there
+CODE_IN_STRINGS = (".sh", ".smk", ".nf", "snakefile", "makefile",
+                   ".m")  # MATLAB: ' is also the transpose operator (y = x'), so its quotes cannot be paired  # copies of scripts made by Python packaging; outputs may live there
 
 # ---------- read or write: from the name of the call that holds the path, in any language ----------
 # regular expressions, matched anywhere in the last part of the call name (pd.DataFrame.to_csv -> to_csv)

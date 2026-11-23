@@ -152,8 +152,13 @@ def statements(code):
     if cur and "".join(cur).strip(): out.append("\n".join(cur).strip())
     return out
 
-QUOTED = re.compile(r""""(?:[^"\\\n]|\\.)*"|'(?:[^'\\\n]|\\.)*'""")
-blank = lambda m: m.group()[0] + " " * (len(m.group()) - 2) + m.group()[-1]  # same length: offsets stay valid
+# a string literal with its prefix (f"", r''): triple-quoted ones may span lines, others end at the line
+QUOTED = re.compile(r"""(?<!\w)([rRbBuUfF]{0,2})("{3}[\s\S]*?"{3}|'{3}[\s\S]*?'{3}|"(?:[^"\\\n]|\\.)*"|'(?:[^'\\\n]|\\.)*')""")
+def blank(m):
+    """the string's text as spaces, same length and lines (offsets stay valid); an f-string keeps its {...} fields"""
+    p, q = m.groups()
+    keep = r"(\{\{|\}\})|(\{[^{}]*\})|[^\n]" if "f" in p.lower() else r"()()[^\n]"
+    return p + q[0] + re.sub(keep, lambda x: x.group(2) or " " * len(x.group()), q[1:-1]) + q[-1]
 
 
 def direction(fn, args):
