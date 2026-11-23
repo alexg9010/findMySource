@@ -101,6 +101,13 @@ def _args(tok, i, v):
 names_re = lambda ns, flags=re.I: re.compile(r"(?:^|[.:])(?:" + "|".join(map(re.escape, ns)) + r")$", flags)  # pkg::f
 JOIN_RE, CONCAT_RE, WRAP_RE = map(names_re, (rules.JOIN_CALLS, rules.CONCAT_CALLS, rules.WRAP_CALLS))
 FORMAT_RE = names_re(rules.FORMAT_CALLS, flags=0)  # case-sensitive, as these always were
+LIST_RE, GLOB_RE, APPLY_RE = (names_re(ns, flags=0) for ns in (rules.LIST_CALLS, rules.GLOB_CALLS, rules.APPLY_CALLS))
+
+def regex_glob(r):
+    """list.files pattern -> glob: "^de_.*\\.csv$" -> de_*.csv, "\\.tsv" -> *.tsv, anything fancier -> *"""
+    g = re.sub(r"\.(?:[*+]|\{\d+(?:,\d*)?\})|\\*\.", lambda m: "." if m.group().endswith(".") else "*", r.lstrip("^").rstrip("$"))
+    return "*" if re.search(r"[\[\](){}+?|\\^$]", g) else re.sub(r"\*+", "*", ("" if r.startswith("^") else "*") + g)
+
 def is_builder(fn):
     return bool(JOIN_RE.search(fn) or CONCAT_RE.search(fn) or WRAP_RE.search(fn) or FORMAT_RE.search(fn))
 
@@ -115,6 +122,11 @@ def _apply(fn, args, v=None):
         return re.sub(r"%[-\d.]*[sdfgi]", lambda m: next(it, "*"), pos[0])
     if re.search(r"(?:^|[.:])(?:glue|str_glue)$", fn) and pos: return _interp(pos[0], v or {})
     if WRAP_RE.search(fn) and len(pos) == 1: return pos[0]
+    kw = dict((n, a) for n, a in args if n)
+    if LIST_RE.search(fn):  # list.files(dir, pattern = regex), fs::dir_ls(dir, glob = ) -> dir/<glob>
+        pat = kw.get("glob") or (regex_glob(kw.get("pattern") or kw.get("regexp")) if kw.get("pattern") or kw.get("regexp") else "*")
+        return (kw.get("path") or (pos[0] if pos else ".")).rstrip("/") + "/" + pat
+    if GLOB_RE.search(fn) and pos: return pos[0]  # Sys.glob("a/*.csv"), glob.glob(...)
     return "*"
 
 def evaluate(expr, v):
@@ -184,6 +196,10 @@ def direction(fn, args):
     if READ_VERB.search(parts[-1]): return "read"
     if len(dot) > 1 and dot[0] in rules.DOTTED_WRITE_WORDS: return "write"  # R: write.fst()
     if len(dot) > 1 and dot[0] in rules.DOTTED_READ_WORDS: return "read"  # R: read.csv()
+    if APPLY_RE.search(name):  # lapply(files, readRDS): the applied function decides
+        for a in args:
+            if re.fullmatch(r"\s*[A-Za-z_.][\w.]*(?:::[A-Za-z_.][\w.]*)?\s*", a) and direction(a.strip(), []) != "mention":
+                return direction(a.strip(), [])
     return "mention"
 
 def snippet(st, p):
