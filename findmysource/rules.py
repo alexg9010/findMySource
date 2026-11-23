@@ -45,6 +45,10 @@ DIRECTION_EXAMPLES = [  # (call, direction): checked by tests/test_rules.py
     ('np.load("data/x.npy")', "read"),
     ('open("data/x.txt")', "read"),
     ('plot_volcano("out/x.pdf")', "mention"),  # unknown verb: only a mention
+    ("lapply(files, readRDS)", "read"),  # apply-style call: the function it applies decides
+    ("purrr::map(files, arrow::read_parquet)", "read"),
+    ("map(pd.read_csv, files)", "read"),
+    ("lapply(files, print)", "mention"),
 ]
 STRING_EXAMPLES = [  # same format as the evidence examples: a call inside a string is text, except in shell scripts
     {"why": "a call written inside a string is text in R and Python",
@@ -97,6 +101,12 @@ BUILDER_EXAMPLES = [  # (expression, variables, path pattern): "*" is a part onl
     ('paste0(out, "/plot_", g, ".png")', {"out": "figures"}, "figures/plot_*.png"),
     ('sprintf("%s/table_%d.csv", out, i)', {"out": "results"}, "results/table_*.csv"),
     ('"{}/x.csv".format(out)', {"out": "results"}, "results/x.csv"),
+    ('list.files(out, pattern = "\\\\.tsv$", full.names = TRUE)', {"out": "results"}, "results/*.tsv"),
+    ('list.files("results", pattern = "^de_.*\\\\.csv$")', {}, "results/de_*.csv"),
+    ('list.files("results", pattern = ".csv")', {}, "results/*.csv"),  # unanchored: taken as the end of the name
+    ('list.files("results", pattern = "[0-9]+\\\\.csv")', {}, "results/*"),  # a regex beyond .* and \\.: any file
+    ('Sys.glob(file.path(out, "*.png"))', {"out": "figures"}, "figures/*.png"),
+    ('glob.glob(os.path.join(OUT, "*.csv"))', {"OUT": "results"}, "results/*.csv"),
 ]
 # format calls are case-sensitive (GLUE() is not glue()); the other builders are not
 # a string is a candidate file path when it ends in an extension of up to 8 characters
