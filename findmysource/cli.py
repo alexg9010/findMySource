@@ -101,7 +101,8 @@ def _args(tok, i, v):
 names_re = lambda ns, flags=re.I: re.compile(r"(?:^|[.:])(?:" + "|".join(map(re.escape, ns)) + r")$", flags)  # pkg::f
 JOIN_RE, CONCAT_RE, WRAP_RE = map(names_re, (rules.JOIN_CALLS, rules.CONCAT_CALLS, rules.WRAP_CALLS))
 FORMAT_RE = names_re(rules.FORMAT_CALLS, flags=0)  # case-sensitive, as these always were
-LIST_RE, GLOB_RE, APPLY_RE = (names_re(ns, flags=0) for ns in (rules.LIST_CALLS, rules.GLOB_CALLS, rules.APPLY_CALLS))
+LIST_RE, GLOB_RE = (names_re(ns, flags=0) for ns in (rules.LIST_CALLS, rules.GLOB_CALLS))
+APPLY_RE = re.compile(r"(?:^|[.:])(" + "|".join(map(re.escape, rules.APPLY_CALLS)) + r")$")
 
 def regex_glob(r):
     """list.files pattern -> glob: "^de_.*\\.csv$" -> de_*.csv, "\\.tsv" -> *.tsv, anything fancier -> *"""
@@ -196,8 +197,12 @@ def direction(fn, args):
     if READ_VERB.search(parts[-1]): return "read"
     if len(dot) > 1 and dot[0] in rules.DOTTED_WRITE_WORDS: return "write"  # R: write.fst()
     if len(dot) > 1 and dot[0] in rules.DOTTED_READ_WORDS: return "read"  # R: read.csv()
-    if APPLY_RE.search(name):  # lapply(files, readRDS): the applied function decides
-        for a in args:
+    m = APPLY_RE.search(name)
+    if m:  # lapply(files, readRDS): the applied function decides, at its position or as FUN = / .f =
+        pos = [a for a in args if not NAMED.match(a)]
+        fns = [pos[i] for i in rules.APPLY_CALLS[m.group(1)] if i < len(pos)] + [
+            NAMED.sub("", a, count=1) for a in args if NAMED.match(a) and a.split("=")[0].strip() in rules.APPLY_FUNCTION_ARGS]
+        for a in fns:
             if re.fullmatch(r"\s*[A-Za-z_.][\w.]*(?:::[A-Za-z_.][\w.]*)?\s*", a) and direction(a.strip(), []) != "mention":
                 return direction(a.strip(), [])
     return "mention"

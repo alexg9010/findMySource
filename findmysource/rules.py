@@ -116,9 +116,12 @@ BUILDER_EXAMPLES = [  # (expression, variables, path pattern): "*" is a part onl
 # ^, $, .*, .+, .{n} and \\.; an unanchored one is taken as the end of the name; any other regex lists every file (*).
 LIST_CALLS = ["list.files", "dir_ls"]
 GLOB_CALLS = ["Sys.glob", "glob", "iglob"]
-# apply-style calls: lapply(files, readRDS) reads, because the function they apply reads
-APPLY_CALLS = ["lapply", "sapply", "vapply", "mapply", "Map", "map", "map_df", "map_dfr", "map_dfc", "walk", "imap",
-               "pmap", "future_map", "future_lapply", "mclapply", "parLapply"]
+# apply-style calls: lapply(files, readRDS) reads, because the function they apply reads. The function is the
+# argument at these positions (map: purrr's map(.x, .f) or Python's map(f, xs)) or named in APPLY_FUNCTION_ARGS.
+APPLY_CALLS = {**{n: (1,) for n in "lapply sapply vapply map_df map_dfr map_dfc walk imap pmap future_map "
+                                   "future_lapply mclapply".split()},
+               "mapply": (0,), "Map": (0,), "parLapply": (2,), "map": (0, 1)}
+APPLY_FUNCTION_ARGS = ["FUN", "fun", ".f", "f", "func"]
 # format calls are case-sensitive (GLUE() is not glue()); the other builders are not
 # a string is a candidate file path when it ends in an extension of up to 8 characters
 FILE_EXT_RE = r"\.[A-Za-z][A-Za-z0-9]{0,7}$"
