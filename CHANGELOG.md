@@ -7,6 +7,9 @@ a patch bump (0.x.y) covers everything else, new features included.
 
 ## Unreleased
 
+- A call written inside a string in R or Python (`'saveRDS(x, "a.rds")'`) no longer counts as a real call;
+  the `{...}` fields of Python f-strings still do. Shell scripts, Snakemake, Nextflow, Makefiles, Julia and
+  MATLAB still count calls in strings: they run code from strings, or (MATLAB) use `'` as an operator.
 - R functions named verb.object (`read.csv`, `write.fst`, `import.bed`) are read as reads and writes by the
   general engine, not only when the R fallback knows them. A script that reads a file through one of them
   is no longer listed as its source.

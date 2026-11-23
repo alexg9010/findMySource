@@ -152,6 +152,29 @@ def statements(code):
     if cur and "".join(cur).strip(): out.append("\n".join(cur).strip())
     return out
 
+# a string literal with its prefix (f"", r''): triple-quoted ones may span lines, others end at the line
+QUOTED = re.compile(r"""(?<!\w)([rRbBuUfF]{0,2})("{3}[\s\S]*?"{3}|'{3}[\s\S]*?'{3}|"(?:[^"\\\n]|\\.)*"|'(?:[^'\\\n]|\\.)*')""")
+SIMPLE_STR = re.compile(r""""(?:[^"\\\n]|\\.)*"|'(?:[^'\\\n]|\\.)*'""")
+def blank(m):
+    """the string's text as spaces, same length and lines (offsets stay valid); an f-string keeps its {...} fields"""
+    p, q = m.groups()
+    body = q[1:-1]
+    if "f" not in p.lower(): return p + q[0] + re.sub(r"[^\n]", " ", body) + q[-1]
+    out, i = [], 0
+    while i < len(body):  # text is blanked; a {field} is code, found quote-aware, with the strings inside it masked
+        if body[i] != "{" or body[i:i + 2] == "{{":
+            n = 2 if body[i:i + 2] in ("{{", "}}") else 1
+            out.append(re.sub(r"[^\n]", " ", body[i:i + n])); i += n; continue
+        j, depth = i, 0
+        while j < len(body):
+            s = SIMPLE_STR.match(body, j) if body[j] in "'\"" else None
+            if s: j = s.end(); continue
+            depth += {"{": 1, "}": -1}.get(body[j], 0); j += 1
+            if not depth: break
+        out.append(QUOTED.sub(blank, body[i:j])); i = j
+    return p + q[0] + "".join(out) + q[-1]
+
+
 def direction(fn, args):
     if any(WRITE_MODE.match(a) for a in args): return "write"
     if any(READ_MODE.match(a) for a in args): return "read"
@@ -169,11 +192,12 @@ def snippet(st, p):
     hit = max(lines, key=lambda l: sum(k in l for k in keys))  # the line with most pieces of the name (ties: first)
     return (hit if hit == lines[0] else f"{lines[0][:60]} … {hit}")[:200]
 
-def generic_scan(code, v0=None, stmts=None, vars_only=False, writers=None):
+def generic_scan(code, v0=None, stmts=None, vars_only=False, writers=None, code_in_strings=False):
     """-> dict(ev=[(pattern, write|read|mention, statement)], names={literal}, uses={script name}, vars={}, stmts=[]).
     vars_only: only follow assignments and script references (cheap first pass).
     writers: the project's own write functions from fms.json, {name: argument name or position of the path};
-    a folder there means every file in it."""
+    a folder there means every file in it.
+    code_in_strings: calls inside string literals count too (shell scripts, Snakemake: rules.CODE_IN_STRINGS)."""
     writers = writers or {}
     v = dict(v0 or {})
     ev, names, uses = [], set(), set()
@@ -185,7 +209,7 @@ def generic_scan(code, v0=None, stmts=None, vars_only=False, writers=None):
         for m in re.finditer(r"^\s*(?:from\s+([\w.]+)\s+import|import\s+([\w.]+))", st):
             uses.add((m.group(1) or m.group(2)).split(".")[-1] + ".py")
         if not vars_only:
-            for cm in CALL_ANY.finditer(st):
+            for cm in CALL_ANY.finditer(st if code_in_strings else QUOTED.sub(blank, st)):  # 'f("x.csv")' is text
                 fn = cm.group(1)
                 # configured: wins over every guess below, builders included. Full name first (save.plots), then
                 # without its package or module (pkg::convert_all, converters.convert_all)
@@ -275,13 +299,14 @@ def file_arg(args, idx):
 
 ASG_RE = re.compile(r"^[ \t]*([A-Za-z_.][\w.$]*)[ \t]*(?:<-|=(?!=))[ \t]*(.+?)[ \t]*$", re.M)
 
-def parse_script(code, params=None):
+def parse_script(code, params=None, code_in_strings=False):
     """-> dict(writes=[pattern], reads=[pattern], sources=[pattern]).
-    Assignments and calls are processed in file order, so a reassigned outdir resolves correctly."""
+    Assignments and calls are processed in file order, so a reassigned outdir resolves correctly.
+    code_in_strings: as in generic_scan, calls inside string literals count too."""
     code = re.sub(r"(?m)^\s*#.*$", "", code)
     v = dict(params or {})
     out = {"writes": [], "reads": [], "sources": []}
-    events = [(m.start(), 0, m) for m in ASG_RE.finditer(code)] + [(m.start(), 1, m) for m in CALL_RE.finditer(code)]
+    events = [(m.start(), 0, m) for m in ASG_RE.finditer(code)] + [(m.start(), 1, m) for m in CALL_RE.finditer(code if code_in_strings else QUOTED.sub(blank, code))]
     for _, kind, m in sorted(events, key=lambda e: (e[0], e[1])):
         if kind == 0:
             if not CALL_RE.match(m.group(2)): v[m.group(1)] = evaluate(m.group(2), v)  # x <- readRDS(..) is not a path
@@ -437,12 +462,13 @@ def _parse1(s):
     src, params = read_code(s)
     g = generic_scan(src, params, vars_only=True)
     return {"params": params, "uses": sorted(g["uses"]), "vars": g["vars"], "stmts": g["stmts"],
-            "lang": parse_script(src, params)}
+            "lang": parse_script(src, params, code_in_strings=s.lower().endswith(rules.CODE_IN_STRINGS))}
 
 def _parse2(job):
     """second pass: evidence, with the variables inherited from source()d / imported scripts"""
     s, v0, stmts, writers = job
-    g = generic_scan(read_code(s)[0], v0, stmts=stmts, writers=writers)
+    g = generic_scan(read_code(s)[0], v0, stmts=stmts, writers=writers,
+                     code_in_strings=s.lower().endswith(rules.CODE_IN_STRINGS))
     return [list(e) for e in g["ev"]], sorted(g["names"])
 
 def pmap(fn, items):

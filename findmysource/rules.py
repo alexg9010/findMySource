@@ -12,7 +12,12 @@ NOTEBOOK_EXT = (".rmd", ".qmd", ".ipynb")  # rendered by knitr/Quarto/Jupyter: s
 # skipped everywhere unless fms.json sets "exclude": editor, RStudio and cache files
 EXCLUDE = ["rstudio-server-db", "rstudio_state", "__pycache__", "*_cache", "*.RData", ".Rhistory", "#*#", "%",
            ".DS_Store"]
-SCRIPT_ONLY_EXCLUDE = ["build", "dist"]  # copies of scripts made by Python packaging; outputs may live there
+SCRIPT_ONLY_EXCLUDE = ["build", "dist"]
+# scripts that run other code from strings (Rscript -e "...", python -c "...", Snakemake shell: "..."): calls
+# inside their string literals count. In all other scripts a string is text: 'saveRDS(x, "a.rds")' is no call.
+CODE_IN_STRINGS = (".sh", ".smk", ".nf", "snakefile", "makefile",
+                   ".jl",  # Julia runs $(...) inside strings: "$(write(out, data))"
+                   ".m")  # MATLAB: ' is also the transpose operator (y = x'), so its quotes cannot be paired  # copies of scripts made by Python packaging; outputs may live there
 
 # ---------- read or write: from the name of the call that holds the path, in any language ----------
 # regular expressions, matched anywhere in the last part of the call name (pd.DataFrame.to_csv -> to_csv)
@@ -40,6 +45,43 @@ DIRECTION_EXAMPLES = [  # (call, direction): checked by tests/test_rules.py
     ('np.load("data/x.npy")', "read"),
     ('open("data/x.txt")', "read"),
     ('plot_volcano("out/x.pdf")', "mention"),  # unknown verb: only a mention
+]
+STRING_EXAMPLES = [  # same format as the evidence examples: a call inside a string is text, except in shell scripts
+    {"why": "a call written inside a string is text in R and Python",
+     "files": {"a.R": "example <- 'saveRDS(x, \"out/a.rds\")'\n", "b.py": "doc = 'df.to_csv(\"out/b.csv\")'\n",
+               "out/a.rds": "", "out/b.csv": ""},
+     "links": {"out/a.rds": "", "out/b.csv": ""}},
+    {"why": "in MATLAB ' is also the transpose operator, so it cannot start a string to blank",
+     "files": {"m.m": "y = x'; save('out/m.csv', 'y', '-ascii');\n", "out/m.csv": ""},
+     "links": {"out/m.csv": "m.m write"}},
+    {"why": "an f-string's {...} fields are code; its text is not",
+     "files": {"f.py": "print(f\"{df.to_csv('out/f.csv')}\")\nnote = f\"df.to_csv('out/g.csv') for {name}\"\n",
+               "out/f.csv": "", "out/g.csv": ""},
+     "links": {"out/f.csv": "f.py write", "out/g.csv": ""}},
+    {"why": "a field with a nested format spec is code too",
+     "files": {"n.py": "width = 10\nprint(f\"{df.to_csv('out/n.csv'):{width}}\")\n", "out/n.csv": ""},
+     "links": {"out/n.csv": "n.py write"}},
+    {"why": "strings inside an f-string field are text: their braces and calls do not count",
+     "files": {"fms.json": '{"write_functions": {"convert_all": 0}}',
+               "p.py": "print(f\"{df.to_csv('out/p.csv') if '{' else 0}\")\npath = \"plots\"\nprint(f\"{'convert_all(path)'}\")\n",
+               "out/p.csv": "", "plots/c.png": ""},
+     "links": {"out/p.csv": "p.py write", "plots/c.png": ""}},
+    {"why": "quotes in an f-string's text do not pair with quotes inside its fields",
+     "files": {"s.py": "print(f\"Saved '{df.to_csv('out/s.csv')}'\")\n", "out/s.csv": ""},
+     "links": {"out/s.csv": "s.py write"}},
+    {"why": "Julia runs $(...) inside strings",
+     "files": {"j.jl": "out = \"out/j.csv\"\nprintln(\"$(write(out, data))\")\n", "out/j.csv": ""},
+     "links": {"out/j.csv": "j.jl write"}},
+    {"why": "a triple-quoted string spanning lines is text too",
+     "files": {"t.py": "doc = \"\"\"Example:\nsaveRDS(x, 'out/t.rds')\n\"\"\"\n", "out/t.rds": ""},
+     "links": {"out/t.rds": ""}},
+    {"why": "a configured write function is a call like any other: quoted, it is text",
+     "files": {"fms.json": '{"write_functions": {"convert_all": 0}}',
+               "w.R": "example <- 'convert_all(\"figs\")'\nconvert_all(\"plots\")\n", "figs/a.png": "", "plots/b.png": ""},
+     "links": {"figs/a.png": "", "plots/b.png": "w.R write-glob"}},
+    {"why": "a shell script runs code from strings",
+     "files": {"run.sh": "python -c \"df.to_csv('out/c.csv')\"\n", "out/c.csv": ""},
+     "links": {"out/c.csv": "run.sh write"}},
 ]
 
 # ---------- path builders, recognised by the shape of their name in any language ----------
