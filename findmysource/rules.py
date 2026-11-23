@@ -49,6 +49,8 @@ DIRECTION_EXAMPLES = [  # (call, direction): checked by tests/test_rules.py
     ("purrr::map(files, arrow::read_parquet)", "read"),
     ("map(pd.read_csv, files)", "read"),
     ("lapply(files, print)", "mention"),
+    ("lapply(read_files, print)", "mention"),  # only the function's position decides, not a data name
+    ("sapply(X = files, FUN = readRDS)", "read"),
 ]
 STRING_EXAMPLES = [  # same format as the evidence examples: a call inside a string is text, except in shell scripts
     {"why": "a call written inside a string is text in R and Python",
