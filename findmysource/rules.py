@@ -16,6 +16,7 @@ SCRIPT_ONLY_EXCLUDE = ["build", "dist"]
 # scripts that run other code from strings (Rscript -e "...", python -c "...", Snakemake shell: "..."): calls
 # inside their string literals count. In all other scripts a string is text: 'saveRDS(x, "a.rds")' is no call.
 CODE_IN_STRINGS = (".sh", ".smk", ".nf", "snakefile", "makefile",
+                   ".jl",  # Julia runs $(...) inside strings: "$(write(out, data))"
                    ".m")  # MATLAB: ' is also the transpose operator (y = x'), so its quotes cannot be paired  # copies of scripts made by Python packaging; outputs may live there
 
 # ---------- read or write: from the name of the call that holds the path, in any language ----------
