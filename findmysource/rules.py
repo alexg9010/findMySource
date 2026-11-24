@@ -27,9 +27,10 @@ READ_VERBS = ["read", "load", "open", "source", "import", "input", "scan", "incl
 # exactly one of these words decides. Exact words only, so Python objects such as reader.plot() stay mentions.
 DOTTED_WRITE_WORDS = ["write", "save", "export", "dump"]
 DOTTED_READ_WORDS = ["read", "load", "import"]
-# an open()-style mode argument overrides the name: open(p, "w") writes although "open" reads
-WRITE_MODES = ["w", "wb", "wt", "w+", "a", "ab", "a+", "x"]
-READ_MODES = ["r", "rb", "rt", "r+"]
+# an open()-style mode argument overrides the name: open(p, "w") writes although "open" reads.
+# Perl: open($fh, '>', p), or two-argument open($fh, ">p") where the mode starts the name.
+WRITE_MODES = ["w", "wb", "wt", "w+", "a", "ab", "a+", "x", ">", ">>", "+>", "+<"]
+READ_MODES = ["r", "rb", "rt", "r+", "<"]
 DIRECTION_EXAMPLES = [  # (call, direction): checked by tests/test_rules.py
     ('saveRDS(x, "out/x.rds")', "write"),
     ('df.to_csv("out/x.csv")', "write"),
@@ -44,7 +45,22 @@ DIRECTION_EXAMPLES = [  # (call, direction): checked by tests/test_rules.py
     ('read$plot("out/x.png")', "mention"),
     ('np.load("data/x.npy")', "read"),
     ('open("data/x.txt")', "read"),
+    ("open(my $out, '>', \"out/x.gff\")", "write"),  # Perl three-argument open: the mode decides
+    ("open(my $log, '>>', \"out/x.log\")", "write"),
+    ("open(my $in, '<', \"data/x.gtf\")", "read"),
+    ('open(OUT, ">out/x.txt")', "write"),  # Perl two-argument open: the mode is the start of the name
+    ('open(IN, "<data/x.txt")', "read"),
     ('plot_volcano("out/x.pdf")', "mention"),  # unknown verb: only a mention
+    ("lapply(files, readRDS)", "read"),  # apply-style call: the function it applies decides
+    ("purrr::map(files, arrow::read_parquet)", "read"),
+    ("map(pd.read_csv, files)", "read"),
+    ("lapply(files, print)", "mention"),
+    ("lapply(read_files, print)", "mention"),  # only the function's position decides, not a data name
+    ("sapply(X = files, FUN = readRDS)", "read"),
+    ("lapply(X = files, readRDS)", "read"),  # a named data argument frees its position
+    ("lapply(files, read_data, x = TRUE)", "read"),  # x= is passed on to read_data, it is no data formal
+    ("mapply(read_data, x = files)", "read"),  # the function comes first: nothing before it to free
+    ("lapply(files, FUN = show, readRDS)", "mention"),  # a named FUN wins; readRDS goes to show() through ...
 ]
 STRING_EXAMPLES = [  # same format as the evidence examples: a call inside a string is text, except in shell scripts
     {"why": "a call written inside a string is text in R and Python",
@@ -159,7 +175,26 @@ BUILDER_EXAMPLES = [  # (expression, variables, path pattern): "*" is a part onl
     ('paste0(out, "/plot_", g, ".png")', {"out": "figures"}, "figures/plot_*.png"),
     ('sprintf("%s/table_%d.csv", out, i)', {"out": "results"}, "results/table_*.csv"),
     ('"{}/x.csv".format(out)', {"out": "results"}, "results/x.csv"),
+    ('list.files(out, pattern = "\\\\.tsv$", full.names = TRUE)', {"out": "results"}, "results/*.tsv"),
+    ('list.files("results", pattern = "^de_.*\\\\.csv$")', {}, "results/de_*.csv"),
+    ('list.files("results", pattern = ".csv")', {}, "results/*.csv"),  # unanchored: taken as the end of the name
+    ('list.files(wdir, pattern = "mbias_.{3}\\\\.txt")', {"wdir": "qc"}, "qc/*mbias_*.txt"),  # unanchored start too
+    ('list.files("results", pattern = "[0-9]+\\\\.csv")', {}, "results/*"),  # a regex beyond .* and \\.: any file
+    ('Sys.glob(file.path(out, "*.png"))', {"out": "figures"}, "figures/*.png"),
+    ('glob.glob(os.path.join(OUT, "*.csv"))', {"OUT": "results"}, "results/*.csv"),
 ]
+# directory listings stand for the files they list: list.files(dir, pattern = regex) and fs::dir_ls(dir, glob =,
+# regexp =) -> dir/<glob>; Sys.glob(), glob.glob() -> their pattern. A regex becomes a glob when it uses only
+# ^, $, .*, .+, .{n} and \\.; an unanchored one is taken as the end of the name; any other regex lists every file (*).
+LIST_CALLS = ["list.files", "dir_ls"]
+GLOB_CALLS = ["Sys.glob", "glob", "iglob"]
+# apply-style calls: lapply(files, readRDS) reads, because the function they apply reads. The function is the
+# argument at these positions (map: purrr's map(.x, .f) or Python's map(f, xs)) or named in APPLY_FUNCTION_ARGS.
+APPLY_CALLS = {**{n: (1,) for n in "lapply sapply vapply map_df map_dfr map_dfc walk imap pmap future_map "
+                                   "future_lapply mclapply".split()},
+               "mapply": (0,), "Map": (0,), "parLapply": (2,), "map": (0, 1)}
+APPLY_FUNCTION_ARGS = ["FUN", "fun", ".f", "f", "func"]
+APPLY_DATA_ARGS = ["X", ".x", ".l", "cl"]  # named, these free their position: lapply(X = files, readRDS)
 # format calls are case-sensitive (GLUE() is not glue()); the other builders are not
 # a string is a candidate file path when it ends in an extension of up to 8 characters
 FILE_EXT_RE = r"\.[A-Za-z][A-Za-z0-9]{0,7}$"

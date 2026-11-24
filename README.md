@@ -206,10 +206,13 @@ record how an output was made.
    - A script inherits the variables of files it `source()`s or imports, such as `config.py` or `utils.R`.
    - Parts that can only be known at run time, such as a loop variable, become wildcards:
      `f"{FIGURES}/hist_{feature}.svg"` becomes `figures/hist_*.svg`.
+   - A directory listing stands for the files it lists: `list.files("res", pattern = "\\.tsv$")`,
+     `Sys.glob()` and `glob.glob()` become `res/*.tsv`.
 2. **Decide the direction** from the name of the call that holds the path, in any language:
    - *save, write, dump, export, `to_…`* → **write**
    - *read, load, open, import, include* → **read**
-   - an `open()` mode such as `"w"` overrides the name.
+   - an `open()` mode such as `"w"` overrides the name, and so does Perl's `open($fh, ">", path)` or `open(FH, ">path")`.
+   - An apply-style call takes the direction of the function it applies: `lapply(files, readRDS)` reads.
    - Snakemake rules declare their files: `output:`, `log:` and `benchmark:` → **write**, `input:` → **read**,
      with `{wildcards}` as `*`.
    - Anything else is a weaker **mention**.

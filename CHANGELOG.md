@@ -9,6 +9,10 @@ a patch bump (0.x.y) covers everything else, new features included.
 
 - Snakemake: files in a rule's `output:`, `log:` and `benchmark:` are writes and `input:` files reads, also over
   several lines and inside `temp()`/`expand()`; `{wildcards}` match any name.
+- Directory listings (`list.files(dir, pattern =)`, `fs::dir_ls()`, `Sys.glob()`, `glob.glob()`) stand for the files
+  they list, and apply-style calls (`lapply(files, readRDS)`, `map(pd.read_csv, files)`) read or write with the
+  function they apply. Such reads now appear as inputs and in the Flow order.
+- Perl `open($fh, '>', path)` and `open(FH, ">path")` are read as writes (`>>`, `+>` and `+<` too), and `'<'` as a read.
 - A call written inside a string in R or Python (`'saveRDS(x, "a.rds")'`) no longer counts as a real call;
   the `{...}` fields of Python f-strings still do. Shell scripts, Snakemake, Nextflow, Makefiles, Julia and
   MATLAB still count calls in strings: they run code from strings, or (MATLAB) use `'` as an operator.

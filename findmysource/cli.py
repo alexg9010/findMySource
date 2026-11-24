@@ -101,6 +101,14 @@ def _args(tok, i, v):
 names_re = lambda ns, flags=re.I: re.compile(r"(?:^|[.:])(?:" + "|".join(map(re.escape, ns)) + r")$", flags)  # pkg::f
 JOIN_RE, CONCAT_RE, WRAP_RE = map(names_re, (rules.JOIN_CALLS, rules.CONCAT_CALLS, rules.WRAP_CALLS))
 FORMAT_RE = names_re(rules.FORMAT_CALLS, flags=0)  # case-sensitive, as these always were
+LIST_RE, GLOB_RE = (names_re(ns, flags=0) for ns in (rules.LIST_CALLS, rules.GLOB_CALLS))
+APPLY_RE = re.compile(r"(?:^|[.:])(" + "|".join(map(re.escape, rules.APPLY_CALLS)) + r")$")
+
+def regex_glob(r):
+    """list.files pattern -> glob: "^de_.*\\.csv$" -> de_*.csv, "\\.tsv" -> *.tsv, anything fancier -> *"""
+    g = re.sub(r"\.(?:[*+]|\{\d+(?:,\d*)?\})|\\*\.", lambda m: "." if m.group().endswith(".") else "*", r.lstrip("^").rstrip("$"))
+    return "*" if re.search(r"[\[\](){}+?|\\^$]", g) else re.sub(r"\*+", "*", ("" if r.startswith("^") else "*") + g)
+
 def is_builder(fn):
     return bool(JOIN_RE.search(fn) or CONCAT_RE.search(fn) or WRAP_RE.search(fn) or FORMAT_RE.search(fn))
 
@@ -115,6 +123,11 @@ def _apply(fn, args, v=None):
         return re.sub(r"%[-\d.]*[sdfgi]", lambda m: next(it, "*"), pos[0])
     if re.search(r"(?:^|[.:])(?:glue|str_glue)$", fn) and pos: return _interp(pos[0], v or {})
     if WRAP_RE.search(fn) and len(pos) == 1: return pos[0]
+    kw = dict((n, a) for n, a in args if n)
+    if LIST_RE.search(fn):  # list.files(dir, pattern = regex), fs::dir_ls(dir, glob = ) -> dir/<glob>
+        pat = kw.get("glob") or (regex_glob(kw.get("pattern") or kw.get("regexp")) if kw.get("pattern") or kw.get("regexp") else "*")
+        return (kw.get("path") or (pos[0] if pos else ".")).rstrip("/") + "/" + pat
+    if GLOB_RE.search(fn) and pos: return pos[0]  # Sys.glob("a/*.csv"), glob.glob(...)
     return "*"
 
 def evaluate(expr, v):
@@ -125,6 +138,7 @@ def evaluate(expr, v):
 WRITE_VERB, READ_VERB = (re.compile("|".join(vs), re.I) for vs in (rules.WRITE_VERBS, rules.READ_VERBS))
 WRITE_MODE, READ_MODE = (re.compile(r"""^\s*(?:mode\s*=\s*)?["'](?:""" + "|".join(map(re.escape, ms)) + r""")["']\s*$""")
                          for ms in (rules.WRITE_MODES, rules.READ_MODES))
+PERL_MODE = re.compile(r"""^\s*["'](\+?[<>]{1,2})\s*[^"'<>\s][^"']*["']\s*$""")  # open(FH, ">out.txt"): a mode, then the name
 CALL_ANY = re.compile(r"([A-Za-z_.][\w.$]*(?:::[A-Za-z_.][\w.$]*)?)\s*\(")
 GEN_ASG = re.compile(r"^\s*(?:export\s+|local\s+)?([A-Za-z_.][\w.$]*)\s*(?:<<-|<-|:=|=(?!=))\s*(.+)$", re.S)
 FILE_LIKE = re.compile(rules.FILE_EXT_RE)
@@ -176,14 +190,26 @@ def blank(m):
 
 
 def direction(fn, args):
-    if any(WRITE_MODE.match(a) for a in args): return "write"
-    if any(READ_MODE.match(a) for a in args): return "read"
+    modes = [m.group(1) for m in map(PERL_MODE.match, args) if m]
+    if any(WRITE_MODE.match(a) for a in args) or any(m in rules.WRITE_MODES for m in modes): return "write"
+    if any(READ_MODE.match(a) for a in args) or any(m in rules.READ_MODES for m in modes): return "read"
     name = fn.rsplit("::", 1)[-1]
     parts, dot = re.split(r"[.:$]", name), name.split(".")  # dot: verb.object is R's dot form only, not write$plot
     if WRITE_VERB.search(parts[-1]): return "write"
     if READ_VERB.search(parts[-1]): return "read"
     if len(dot) > 1 and dot[0] in rules.DOTTED_WRITE_WORDS: return "write"  # R: write.fst()
     if len(dot) > 1 and dot[0] in rules.DOTTED_READ_WORDS: return "read"  # R: read.csv()
+    m = APPLY_RE.search(name)
+    if m:  # lapply(files, readRDS): the applied function decides, at its position or as FUN = / .f =
+        pos = [a for a in args if not NAMED.match(a)]
+        named = [NAMED.sub("", a, count=1) for a in args if NAMED.match(a) and a.split("=")[0].strip() in rules.APPLY_FUNCTION_ARGS]
+        shift = sum(1 for a in args if NAMED.match(a) and a.split("=")[0].strip() in rules.APPLY_DATA_ARGS)
+        # a named data argument frees a position only before the function (lapply(X = files, readRDS))
+        at = [i - shift if i else 0 for i in rules.APPLY_CALLS[m.group(1)]]
+        fns = named or [pos[i] for i in at if 0 <= i < len(pos)]
+        for a in fns:
+            if re.fullmatch(r"\s*[A-Za-z_.][\w.]*(?:::[A-Za-z_.][\w.]*)?\s*", a) and direction(a.strip(), []) != "mention":
+                return direction(a.strip(), [])
     return "mention"
 
 def snippet(st, p):
@@ -291,6 +317,7 @@ def generic_scan(code, v0=None, stmts=None, vars_only=False, writers=None, code_
                 for a in args:
                     a = NAMED.sub("", a, count=1)
                     p = evaluate(a, v)
+                    if PERL_MODE.match(a): p = re.sub(r"^\+?[<>]{1,2}\s*", "", p)  # ">out.txt" names out.txt
                     if FILE_LIKE.search(p) and len(p.replace("*", "")) >= 3 and "://" not in p:
                         ev.append((p, kind, snippet(st, p)))
                     lit = re.fullmatch(r"""\s*["']([\w.\-]{4,})["']\s*""", a)
