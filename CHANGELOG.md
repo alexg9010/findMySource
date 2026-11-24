@@ -7,6 +7,7 @@ a patch bump (0.x.y) covers everything else, new features included.
 
 ## Unreleased
 
+- Perl `open($fh, '>', path)` and `open(FH, ">path")` are read as writes (`>>`, `+>` and `+<` too), and `'<'` as a read.
 - A call written inside a string in R or Python (`'saveRDS(x, "a.rds")'`) no longer counts as a real call;
   the `{...}` fields of Python f-strings still do. Shell scripts, Snakemake, Nextflow, Makefiles, Julia and
   MATLAB still count calls in strings: they run code from strings, or (MATLAB) use `'` as an operator.

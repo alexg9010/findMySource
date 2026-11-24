@@ -209,7 +209,7 @@ record how an output was made.
 2. **Decide the direction** from the name of the call that holds the path, in any language:
    - *save, write, dump, export, `to_…`* → **write**
    - *read, load, open, import, include* → **read**
-   - an `open()` mode such as `"w"` overrides the name.
+   - an `open()` mode such as `"w"` overrides the name, and so does Perl's `open($fh, ">", path)` or `open(FH, ">path")`.
    - Anything else is a weaker **mention**.
    - A call written inside a string (`'saveRDS(x, "a.rds")'`) is text, not code, except in shell scripts,
      Snakemake, Nextflow and Makefiles, which run code from strings (`Rscript -e "..."`).
