@@ -22,6 +22,12 @@
     "results/counts/filtered/S3.parquet": [
       "pipeline/02_filter.py"
     ],
+    "results/annotation.gff": [
+      "pipeline/03_annotate.pl"
+    ],
+    "results/annotate.log": [
+      "pipeline/03_annotate.pl"
+    ],
     "results/stats/dds.rds": [
       "analysis/02_normalize.R"
     ],

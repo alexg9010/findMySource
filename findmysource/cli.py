@@ -138,6 +138,7 @@ def evaluate(expr, v):
 WRITE_VERB, READ_VERB = (re.compile("|".join(vs), re.I) for vs in (rules.WRITE_VERBS, rules.READ_VERBS))
 WRITE_MODE, READ_MODE = (re.compile(r"""^\s*(?:mode\s*=\s*)?["'](?:""" + "|".join(map(re.escape, ms)) + r""")["']\s*$""")
                          for ms in (rules.WRITE_MODES, rules.READ_MODES))
+PERL_MODE = re.compile(r"""^\s*["'](\+?[<>]{1,2})\s*[^"'<>\s][^"']*["']\s*$""")  # open(FH, ">out.txt"): a mode, then the name
 CALL_ANY = re.compile(r"([A-Za-z_.][\w.$]*(?:::[A-Za-z_.][\w.$]*)?)\s*\(")
 GEN_ASG = re.compile(r"^\s*(?:export\s+|local\s+)?([A-Za-z_.][\w.$]*)\s*(?:<<-|<-|:=|=(?!=))\s*(.+)$", re.S)
 FILE_LIKE = re.compile(rules.FILE_EXT_RE)
@@ -189,8 +190,9 @@ def blank(m):
 
 
 def direction(fn, args):
-    if any(WRITE_MODE.match(a) for a in args): return "write"
-    if any(READ_MODE.match(a) for a in args): return "read"
+    modes = [m.group(1) for m in map(PERL_MODE.match, args) if m]
+    if any(WRITE_MODE.match(a) for a in args) or any(m in rules.WRITE_MODES for m in modes): return "write"
+    if any(READ_MODE.match(a) for a in args) or any(m in rules.READ_MODES for m in modes): return "read"
     name = fn.rsplit("::", 1)[-1]
     parts, dot = re.split(r"[.:$]", name), name.split(".")  # dot: verb.object is R's dot form only, not write$plot
     if WRITE_VERB.search(parts[-1]): return "write"
@@ -253,6 +255,7 @@ def generic_scan(code, v0=None, stmts=None, vars_only=False, writers=None, code_
                 for a in args:
                     a = NAMED.sub("", a, count=1)
                     p = evaluate(a, v)
+                    if PERL_MODE.match(a): p = re.sub(r"^\+?[<>]{1,2}\s*", "", p)  # ">out.txt" names out.txt
                     if FILE_LIKE.search(p) and len(p.replace("*", "")) >= 3 and "://" not in p:
                         ev.append((p, kind, snippet(st, p)))
                     lit = re.fullmatch(r"""\s*["']([\w.\-]{4,})["']\s*""", a)
