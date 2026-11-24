@@ -213,6 +213,8 @@ record how an output was made.
    - *read, load, open, import, include* → **read**
    - an `open()` mode such as `"w"` overrides the name, and so does Perl's `open($fh, ">", path)` or `open(FH, ">path")`.
    - An apply-style call takes the direction of the function it applies: `lapply(files, readRDS)` reads.
+   - Snakemake rules declare their files: `output:`, `log:` and `benchmark:` → **write**, `input:` → **read**,
+     with `{wildcards}` as `*`.
    - Anything else is a weaker **mention**.
    - A call written inside a string (`'saveRDS(x, "a.rds")'`) is text, not code, except in shell scripts,
      Snakemake, Nextflow and Makefiles, which run code from strings (`Rscript -e "..."`).
@@ -255,7 +257,7 @@ and `Makefile`. Set `extensions` in `fms.json` to change it.
 
 ## Roadmap
 
-- Rule-aware Snakemake/Nextflow support (inputs and outputs declared per rule).
+- Rule-aware Nextflow support (inputs and outputs declared per process).
 - Hard evidence from **DVC** and **git-lfs**. Content hashes would confirm exactly
   which version of an input produced an output, on top of today's pattern matching.
 - Incremental re-runs for very large output trees.

@@ -1,0 +1,11 @@
+# Per-sample read QC.
+SAMPLES = ["S1", "S2", "S3"]
+
+rule all:
+    input: expand("results/qc/{s}_fastqc.html", s=SAMPLES)
+
+rule fastqc:
+    input: "data/raw/{s}.fastq.gz"
+    output: "results/qc/{s}_fastqc.html"
+    log: "logs/fastqc_{s}.log"
+    shell: "fastqc {input} --outdir results/qc 2> {log}"

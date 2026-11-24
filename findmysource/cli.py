@@ -218,12 +218,74 @@ def snippet(st, p):
     hit = max(lines, key=lambda l: sum(k in l for k in keys))  # the line with most pieces of the name (ties: first)
     return (hit if hit == lines[0] else f"{lines[0][:60]} … {hit}")[:200]
 
-def generic_scan(code, v0=None, stmts=None, vars_only=False, writers=None, code_in_strings=False):
+SNAKE_DIRECTIVE = re.compile(r"^(\s*)(\w+):(.*)$")
+
+def depth(line):
+    """brackets opened minus closed on a line, outside strings and comments"""
+    d = 0
+    for t in LEX_RE.finditer(line):
+        if t.group()[0] == "#": break
+        d += {"(": 1, "[": 1, ")": -1, "]": -1}.get(t.group(), 0)
+    return d
+
+def uncomment(line):
+    """line without its # comment (a # inside a string stays)"""
+    return line[:next((t.start() for t in LEX_RE.finditer(line) if t.group()[0] == "#"), len(line))].rstrip()
+
+def snake_items(a):
+    """one declared file expression -> its files: lists flattened, temp("x") and the like unwrapped"""
+    a = NAMED.sub("", a, count=1).strip()
+    if a[:1] == "(" and a[-1:] == ")" and split_call("f" + a, 2)[1] == len(a):  # ("x"): grouping, not ("a") + ("b")
+        return [x for y in split_call("f" + a, 2)[0] for x in snake_items(y)]
+    if a[:1] == "[" and a[-1:] == "]": return [x for y in split_call("f(" + a[1:-1] + ")", 2)[0] for x in snake_items(y)]
+    m = re.match(r"([\w.]+)\s*\(", a)
+    if m and m.group(1).rsplit(".", 1)[-1] in rules.SNAKEMAKE_WRAPPERS:  # temp("x"), expand("x", s=S)
+        return snake_items(next((x for x in split_call(a, m.end())[0] if not NAMED.match(x)), ""))
+    return [a]
+
+def snakemake_files(code, v0=None):
+    """Snakemake rules -> [(path, write|read, line)]: files in output:/log:/benchmark: (write) and input: (read).
+    A directive runs from its line over the more indented lines below it; comments and triple-quoted text are not
+    part of it. Each file is one expression, evaluated with the variables assigned above it; lists are flattened,
+    temp("x") and the like unwrapped, {wildcards} (also {s,\\d{3}}) become *."""
+    code = re.sub(r'"""[\s\S]*?"""|\'\'\'[\s\S]*?\'\'\'', lambda m: re.sub(r"[^\n]", " ", m.group()), code)
+    ev, v, block, lines = [], dict(v0 or {}), None, code.split("\n")  # block: [kind, indent, text, lines as shown]
+
+    def flush():
+        if not (block and block[0]): return
+        for item in split_call("f(" + "\n".join(block[2]) + ")", 2)[0]:
+            for a in snake_items(item):
+                p = re.sub(r"\{(?:[^{}]|\{[^{}]*\})*\}", "*", evaluate(a, v))
+                if (FILE_LIKE.search(p) or block[0] == "write") and len(p.replace("*", "")) >= 3 and "://" not in p:
+                    # a declared output without extension: a flag file or a directory(); "/*" lets the link step decide
+                    ev.append((p if FILE_LIKE.search(p) else p.rstrip("/") + "/*", block[0], snippet("\n".join(block[3]), p)))
+
+    i = 0
+    while i < len(lines):
+        line = lines[i]; i += 1
+        line = uncomment(line)
+        if not line.strip(): continue  # blank or comment: a directive goes on
+        m, cur = SNAKE_DIRECTIVE.match(line), len(line) - len(line.lstrip())
+        if block and cur > block[1] and not m: block[2].append(line); block[3].append(line.strip()); continue
+        flush()
+        block = [("write" if m.group(2) in rules.SNAKEMAKE_WRITE else "read" if m.group(2) in rules.SNAKEMAKE_READ
+                  else None), cur, [m.group(3)], [line.strip()]] if m else None
+        a = GEN_ASG.match(line) if not m and cur == 0 else None
+        if a:  # top-level variables, in file order; an assignment goes on while its brackets are open
+            st, d = line, depth(line)
+            while d > 0 and i < len(lines): st += "\n" + uncomment(lines[i]); d += depth(lines[i]); i += 1
+            a = GEN_ASG.match(st)
+            v[a.group(1)] = evaluate(a.group(2), v)
+    flush()
+    return ev
+
+def generic_scan(code, v0=None, stmts=None, vars_only=False, writers=None, code_in_strings=False, snakemake=False):
     """-> dict(ev=[(pattern, write|read|mention, statement)], names={literal}, uses={script name}, vars={}, stmts=[]).
     vars_only: only follow assignments and script references (cheap first pass).
     writers: the project's own write functions from fms.json, {name: argument name or position of the path};
     a folder there means every file in it.
-    code_in_strings: calls inside string literals count too (shell scripts, Snakemake: rules.CODE_IN_STRINGS)."""
+    code_in_strings: calls inside string literals count too (shell scripts, Snakemake: rules.CODE_IN_STRINGS).
+    snakemake: also the files declared by rules (rules.SNAKEMAKE_SCRIPTS)."""
     writers = writers or {}
     v = dict(v0 or {})
     ev, names, uses = [], set(), set()
@@ -267,6 +329,7 @@ def generic_scan(code, v0=None, stmts=None, vars_only=False, writers=None, code_
             v[m.group(1)] = val
             if not vars_only and FILE_LIKE.search(val) and len(val.replace("*", "")) >= 3 and "://" not in val:
                 ev.append((val, "mention", snippet(st, val)))
+    if snakemake and not vars_only: ev += snakemake_files(code, v0)
     return {"ev": sorted(set(ev)), "names": names, "uses": uses, "vars": v, "stmts": stmts}
 
 
@@ -495,7 +558,8 @@ def _parse2(job):
     """second pass: evidence, with the variables inherited from source()d / imported scripts"""
     s, v0, stmts, writers = job
     g = generic_scan(read_code(s)[0], v0, stmts=stmts, writers=writers,
-                     code_in_strings=s.lower().endswith(rules.CODE_IN_STRINGS))
+                     code_in_strings=s.lower().endswith(rules.CODE_IN_STRINGS),
+                     snakemake=s.lower().endswith(rules.SNAKEMAKE_SCRIPTS))
     return [list(e) for e in g["ev"]], sorted(g["names"])
 
 def pmap(fn, items):

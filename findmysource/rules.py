@@ -100,6 +100,68 @@ STRING_EXAMPLES = [  # same format as the evidence examples: a call inside a str
      "links": {"out/c.csv": "run.sh write"}},
 ]
 
+# Snakemake rules declare their files: output:, log: and benchmark: are written, input: is read. {wildcards} -> *
+SNAKEMAKE_SCRIPTS = (".smk", "snakefile")
+SNAKEMAKE_WRITE = ["output", "log", "benchmark"]
+SNAKEMAKE_READ = ["input"]
+SNAKEMAKE_WRAPPERS = ["temp", "protected", "directory", "touch", "ancient", "pipe", "expand", "report"]  # file: 1st arg
+SNAKEMAKE_EXAMPLES = [  # same format as the evidence examples
+    {"why": "output: declares what a rule writes, {wildcards} match any name",
+     "files": {"Snakefile": "rule qc:\n    input: \"data/{s}.fq\"\n    output: \"out/{s}_qc.html\"\n    shell: \"qc {input}\"\n",
+               "data/a.fq": "", "out/a_qc.html": ""},
+     "links": {"data/a.fq": "", "out/a_qc.html": "Snakefile write-glob"}},
+    {"why": "a directive can span several lines, with named files and temp()/protected() wrappers",
+     "files": {"rules/align.smk": "rule align:\n    output:\n        bam=temp(\"out/x.bam\"),\n"
+                                  "        bai=protected(\"out/x.bam.bai\")\n    log:\n        \"logs/align.log\"\n"
+                                  "    params: extra=\"out/not_a_file.txt\"\n",
+               "out/x.bam": "", "out/x.bam.bai": "", "logs/align.log": "", "out/not_a_file.txt": ""},
+     "links": {"out/x.bam": "rules/align.smk write", "out/x.bam.bai": "rules/align.smk write",
+               "logs/align.log": "rules/align.smk write", "out/not_a_file.txt": ""}},  # params: declares no file
+    {"why": "a comment inside a directive declares nothing",
+     "files": {"Snakefile": "rule a:\n    output:\n        # \"data/raw.csv\" is an input\n        \"out/a.csv\"\n",
+               "data/raw.csv": "", "out/a.csv": ""},
+     "links": {"data/raw.csv": "", "out/a.csv": "Snakefile write"}},
+    {"why": "a declared file is a whole expression, not each string in it",
+     "files": {"Snakefile": "import os\nrule r:\n    output: os.path.join(\"results\", \"report.csv\")\n",
+               "results/report.csv": "", "archive/report.csv": ""},
+     "links": {"results/report.csv": "Snakefile write", "archive/report.csv": ""}},
+    {"why": "a directive uses the variables as they are at that point of the file",
+     "files": {"Snakefile": "OUT = \"first\"\nrule a:\n    output: f\"{OUT}/report.txt\"\nOUT = \"second\"\n",
+               "first/report.txt": "", "second/report.txt": ""},
+     "links": {"first/report.txt": "Snakefile write", "second/report.txt": ""}},
+    {"why": "a list declares each of its files, also inside temp()",
+     "files": {"Snakefile": "rule l:\n    output: [\"out/a.txt\", \"out/b.txt\"], temp([\"out/c.txt\"])\n",
+               "out/a.txt": "", "out/b.txt": "", "out/c.txt": ""},
+     "links": {"out/a.txt": "Snakefile write", "out/b.txt": "Snakefile write", "out/c.txt": "Snakefile write"}},
+    {"why": "a wildcard with a regex constraint is one wildcard",
+     "files": {"Snakefile": "rule c:\n    output: r\"out/{s,\\d{3}}.txt\"\n", "out/123.txt": ""},
+     "links": {"out/123.txt": "Snakefile write-glob"}},
+    {"why": "a triple-quoted string is text, even when it looks like a directive",
+     "files": {"Snakefile": "\"\"\"\nUsage:\n    output: \"data/raw.csv\"\n\"\"\"\n", "data/raw.csv": ""},
+     "links": {"data/raw.csv": ""}},
+    {"why": "an assignment over several lines is evaluated whole",
+     "files": {"Snakefile": "import os\nOUT = os.path.join(\"results\",\n                   \"qc\")\n"
+                            "rule qc:\n    output: f\"{OUT}/report.txt\"\n",
+               "results/qc/report.txt": "", "results/report.txt": ""},
+     "links": {"results/qc/report.txt": "Snakefile write", "results/report.txt": ""}},
+    {"why": "parentheses around a file are only grouping",
+     "files": {"Snakefile": "rule p:\n    output: (\"out/p.txt\")\n", "out/p.txt": ""},
+     "links": {"out/p.txt": "Snakefile write"}},
+    {"why": "a declared output needs no extension: a flag file, or a directory() and the files in it",
+     "files": {"Snakefile": "rule s:\n    output: \"results/SUCCESS\", directory(\"results/qc\")\n",
+               "results/SUCCESS": "", "results/qc/a.html": ""},
+     "links": {"results/SUCCESS": "Snakefile write", "results/qc/a.html": "Snakefile write-glob"}},
+    {"why": "comments inside a multi-line assignment are not part of it",
+     "files": {"Snakefile": "import os\nOUT = os.path.join(\n    \"results\",  # root\n    \"qc\")\n"
+                            "rule qc:\n    output: f\"{OUT}/report.txt\"\n",
+               "results/qc/report.txt": "", "results/other/report.txt": ""},
+     "links": {"results/qc/report.txt": "Snakefile write", "results/other/report.txt": ""}},
+    {"why": "a rule that collects with expand() reads; the rule that makes the files is the source",
+     "files": {"Snakefile": "rule all:\n    input: expand(\"out/{s}.txt\", s=S)\n"
+                            "rule make:\n    output: \"out/{s}.txt\"\n", "out/a.txt": ""},
+     "links": {"out/a.txt": "Snakefile write-glob"}},
+]
+
 # ---------- path builders, recognised by the shape of their name in any language ----------
 JOIN_CALLS = ["file.path", "path", "join", "joinpath", "path_join", "here"]  # parts joined with "/"
 CONCAT_CALLS = ["paste0", "str_c", "stri_c", "concat", "stri_paste"]  # parts glued together

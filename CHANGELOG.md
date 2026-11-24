@@ -7,6 +7,8 @@ a patch bump (0.x.y) covers everything else, new features included.
 
 ## Unreleased
 
+- Snakemake: files in a rule's `output:`, `log:` and `benchmark:` are writes and `input:` files reads, also over
+  several lines and inside `temp()`/`expand()`; `{wildcards}` match any name.
 - Directory listings (`list.files(dir, pattern =)`, `fs::dir_ls()`, `Sys.glob()`, `glob.glob()`) stand for the files
   they list, and apply-style calls (`lapply(files, readRDS)`, `map(pd.read_csv, files)`) read or write with the
   function they apply. Such reads now appear as inputs and in the Flow order.
