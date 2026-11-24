@@ -27,9 +27,10 @@ READ_VERBS = ["read", "load", "open", "source", "import", "input", "scan", "incl
 # exactly one of these words decides. Exact words only, so Python objects such as reader.plot() stay mentions.
 DOTTED_WRITE_WORDS = ["write", "save", "export", "dump"]
 DOTTED_READ_WORDS = ["read", "load", "import"]
-# an open()-style mode argument overrides the name: open(p, "w") writes although "open" reads
-WRITE_MODES = ["w", "wb", "wt", "w+", "a", "ab", "a+", "x"]
-READ_MODES = ["r", "rb", "rt", "r+"]
+# an open()-style mode argument overrides the name: open(p, "w") writes although "open" reads.
+# Perl: open($fh, '>', p), or two-argument open($fh, ">p") where the mode starts the name.
+WRITE_MODES = ["w", "wb", "wt", "w+", "a", "ab", "a+", "x", ">", ">>", "+>", "+<"]
+READ_MODES = ["r", "rb", "rt", "r+", "<"]
 DIRECTION_EXAMPLES = [  # (call, direction): checked by tests/test_rules.py
     ('saveRDS(x, "out/x.rds")', "write"),
     ('df.to_csv("out/x.csv")', "write"),
@@ -44,7 +45,22 @@ DIRECTION_EXAMPLES = [  # (call, direction): checked by tests/test_rules.py
     ('read$plot("out/x.png")', "mention"),
     ('np.load("data/x.npy")', "read"),
     ('open("data/x.txt")', "read"),
+    ("open(my $out, '>', \"out/x.gff\")", "write"),  # Perl three-argument open: the mode decides
+    ("open(my $log, '>>', \"out/x.log\")", "write"),
+    ("open(my $in, '<', \"data/x.gtf\")", "read"),
+    ('open(OUT, ">out/x.txt")', "write"),  # Perl two-argument open: the mode is the start of the name
+    ('open(IN, "<data/x.txt")', "read"),
     ('plot_volcano("out/x.pdf")', "mention"),  # unknown verb: only a mention
+    ("lapply(files, readRDS)", "read"),  # apply-style call: the function it applies decides
+    ("purrr::map(files, arrow::read_parquet)", "read"),
+    ("map(pd.read_csv, files)", "read"),
+    ("lapply(files, print)", "mention"),
+    ("lapply(read_files, print)", "mention"),  # only the function's position decides, not a data name
+    ("sapply(X = files, FUN = readRDS)", "read"),
+    ("lapply(X = files, readRDS)", "read"),  # a named data argument frees its position
+    ("lapply(files, read_data, x = TRUE)", "read"),  # x= is passed on to read_data, it is no data formal
+    ("mapply(read_data, x = files)", "read"),  # the function comes first: nothing before it to free
+    ("lapply(files, FUN = show, readRDS)", "mention"),  # a named FUN wins; readRDS goes to show() through ...
 ]
 STRING_EXAMPLES = [  # same format as the evidence examples: a call inside a string is text, except in shell scripts
     {"why": "a call written inside a string is text in R and Python",
@@ -157,6 +173,68 @@ SHELL_EXAMPLES = [  # same format as the evidence examples
      "links": {"out.txt": ""}},
 ]
 
+# Snakemake rules declare their files: output:, log: and benchmark: are written, input: is read. {wildcards} -> *
+SNAKEMAKE_SCRIPTS = (".smk", "snakefile")
+SNAKEMAKE_WRITE = ["output", "log", "benchmark"]
+SNAKEMAKE_READ = ["input"]
+SNAKEMAKE_WRAPPERS = ["temp", "protected", "directory", "touch", "ancient", "pipe", "expand", "report"]  # file: 1st arg
+SNAKEMAKE_EXAMPLES = [  # same format as the evidence examples
+    {"why": "output: declares what a rule writes, {wildcards} match any name",
+     "files": {"Snakefile": "rule qc:\n    input: \"data/{s}.fq\"\n    output: \"out/{s}_qc.html\"\n    shell: \"qc {input}\"\n",
+               "data/a.fq": "", "out/a_qc.html": ""},
+     "links": {"data/a.fq": "", "out/a_qc.html": "Snakefile write-glob"}},
+    {"why": "a directive can span several lines, with named files and temp()/protected() wrappers",
+     "files": {"rules/align.smk": "rule align:\n    output:\n        bam=temp(\"out/x.bam\"),\n"
+                                  "        bai=protected(\"out/x.bam.bai\")\n    log:\n        \"logs/align.log\"\n"
+                                  "    params: extra=\"out/not_a_file.txt\"\n",
+               "out/x.bam": "", "out/x.bam.bai": "", "logs/align.log": "", "out/not_a_file.txt": ""},
+     "links": {"out/x.bam": "rules/align.smk write", "out/x.bam.bai": "rules/align.smk write",
+               "logs/align.log": "rules/align.smk write", "out/not_a_file.txt": ""}},  # params: declares no file
+    {"why": "a comment inside a directive declares nothing",
+     "files": {"Snakefile": "rule a:\n    output:\n        # \"data/raw.csv\" is an input\n        \"out/a.csv\"\n",
+               "data/raw.csv": "", "out/a.csv": ""},
+     "links": {"data/raw.csv": "", "out/a.csv": "Snakefile write"}},
+    {"why": "a declared file is a whole expression, not each string in it",
+     "files": {"Snakefile": "import os\nrule r:\n    output: os.path.join(\"results\", \"report.csv\")\n",
+               "results/report.csv": "", "archive/report.csv": ""},
+     "links": {"results/report.csv": "Snakefile write", "archive/report.csv": ""}},
+    {"why": "a directive uses the variables as they are at that point of the file",
+     "files": {"Snakefile": "OUT = \"first\"\nrule a:\n    output: f\"{OUT}/report.txt\"\nOUT = \"second\"\n",
+               "first/report.txt": "", "second/report.txt": ""},
+     "links": {"first/report.txt": "Snakefile write", "second/report.txt": ""}},
+    {"why": "a list declares each of its files, also inside temp()",
+     "files": {"Snakefile": "rule l:\n    output: [\"out/a.txt\", \"out/b.txt\"], temp([\"out/c.txt\"])\n",
+               "out/a.txt": "", "out/b.txt": "", "out/c.txt": ""},
+     "links": {"out/a.txt": "Snakefile write", "out/b.txt": "Snakefile write", "out/c.txt": "Snakefile write"}},
+    {"why": "a wildcard with a regex constraint is one wildcard",
+     "files": {"Snakefile": "rule c:\n    output: r\"out/{s,\\d{3}}.txt\"\n", "out/123.txt": ""},
+     "links": {"out/123.txt": "Snakefile write-glob"}},
+    {"why": "a triple-quoted string is text, even when it looks like a directive",
+     "files": {"Snakefile": "\"\"\"\nUsage:\n    output: \"data/raw.csv\"\n\"\"\"\n", "data/raw.csv": ""},
+     "links": {"data/raw.csv": ""}},
+    {"why": "an assignment over several lines is evaluated whole",
+     "files": {"Snakefile": "import os\nOUT = os.path.join(\"results\",\n                   \"qc\")\n"
+                            "rule qc:\n    output: f\"{OUT}/report.txt\"\n",
+               "results/qc/report.txt": "", "results/report.txt": ""},
+     "links": {"results/qc/report.txt": "Snakefile write", "results/report.txt": ""}},
+    {"why": "parentheses around a file are only grouping",
+     "files": {"Snakefile": "rule p:\n    output: (\"out/p.txt\")\n", "out/p.txt": ""},
+     "links": {"out/p.txt": "Snakefile write"}},
+    {"why": "a declared output needs no extension: a flag file, or a directory() and the files in it",
+     "files": {"Snakefile": "rule s:\n    output: \"results/SUCCESS\", directory(\"results/qc\")\n",
+               "results/SUCCESS": "", "results/qc/a.html": ""},
+     "links": {"results/SUCCESS": "Snakefile write", "results/qc/a.html": "Snakefile write-glob"}},
+    {"why": "comments inside a multi-line assignment are not part of it",
+     "files": {"Snakefile": "import os\nOUT = os.path.join(\n    \"results\",  # root\n    \"qc\")\n"
+                            "rule qc:\n    output: f\"{OUT}/report.txt\"\n",
+               "results/qc/report.txt": "", "results/other/report.txt": ""},
+     "links": {"results/qc/report.txt": "Snakefile write", "results/other/report.txt": ""}},
+    {"why": "a rule that collects with expand() reads; the rule that makes the files is the source",
+     "files": {"Snakefile": "rule all:\n    input: expand(\"out/{s}.txt\", s=S)\n"
+                            "rule make:\n    output: \"out/{s}.txt\"\n", "out/a.txt": ""},
+     "links": {"out/a.txt": "Snakefile write-glob"}},
+]
+
 # ---------- path builders, recognised by the shape of their name in any language ----------
 JOIN_CALLS = ["file.path", "path", "join", "joinpath", "path_join", "here"]  # parts joined with "/"
 CONCAT_CALLS = ["paste0", "str_c", "stri_c", "concat", "stri_paste"]  # parts glued together
@@ -170,7 +248,26 @@ BUILDER_EXAMPLES = [  # (expression, variables, path pattern): "*" is a part onl
     ('paste0(out, "/plot_", g, ".png")', {"out": "figures"}, "figures/plot_*.png"),
     ('sprintf("%s/table_%d.csv", out, i)', {"out": "results"}, "results/table_*.csv"),
     ('"{}/x.csv".format(out)', {"out": "results"}, "results/x.csv"),
+    ('list.files(out, pattern = "\\\\.tsv$", full.names = TRUE)', {"out": "results"}, "results/*.tsv"),
+    ('list.files("results", pattern = "^de_.*\\\\.csv$")', {}, "results/de_*.csv"),
+    ('list.files("results", pattern = ".csv")', {}, "results/*.csv"),  # unanchored: taken as the end of the name
+    ('list.files(wdir, pattern = "mbias_.{3}\\\\.txt")', {"wdir": "qc"}, "qc/*mbias_*.txt"),  # unanchored start too
+    ('list.files("results", pattern = "[0-9]+\\\\.csv")', {}, "results/*"),  # a regex beyond .* and \\.: any file
+    ('Sys.glob(file.path(out, "*.png"))', {"out": "figures"}, "figures/*.png"),
+    ('glob.glob(os.path.join(OUT, "*.csv"))', {"OUT": "results"}, "results/*.csv"),
 ]
+# directory listings stand for the files they list: list.files(dir, pattern = regex) and fs::dir_ls(dir, glob =,
+# regexp =) -> dir/<glob>; Sys.glob(), glob.glob() -> their pattern. A regex becomes a glob when it uses only
+# ^, $, .*, .+, .{n} and \\.; an unanchored one is taken as the end of the name; any other regex lists every file (*).
+LIST_CALLS = ["list.files", "dir_ls"]
+GLOB_CALLS = ["Sys.glob", "glob", "iglob"]
+# apply-style calls: lapply(files, readRDS) reads, because the function they apply reads. The function is the
+# argument at these positions (map: purrr's map(.x, .f) or Python's map(f, xs)) or named in APPLY_FUNCTION_ARGS.
+APPLY_CALLS = {**{n: (1,) for n in "lapply sapply vapply map_df map_dfr map_dfc walk imap pmap future_map "
+                                   "future_lapply mclapply".split()},
+               "mapply": (0,), "Map": (0,), "parLapply": (2,), "map": (0, 1)}
+APPLY_FUNCTION_ARGS = ["FUN", "fun", ".f", "f", "func"]
+APPLY_DATA_ARGS = ["X", ".x", ".l", "cl"]  # named, these free their position: lapply(X = files, readRDS)
 # format calls are case-sensitive (GLUE() is not glue()); the other builders are not
 # a string is a candidate file path when it ends in an extension of up to 8 characters
 FILE_EXT_RE = r"\.[A-Za-z][A-Za-z0-9]{0,7}$"

@@ -101,6 +101,14 @@ def _args(tok, i, v):
 names_re = lambda ns, flags=re.I: re.compile(r"(?:^|[.:])(?:" + "|".join(map(re.escape, ns)) + r")$", flags)  # pkg::f
 JOIN_RE, CONCAT_RE, WRAP_RE = map(names_re, (rules.JOIN_CALLS, rules.CONCAT_CALLS, rules.WRAP_CALLS))
 FORMAT_RE = names_re(rules.FORMAT_CALLS, flags=0)  # case-sensitive, as these always were
+LIST_RE, GLOB_RE = (names_re(ns, flags=0) for ns in (rules.LIST_CALLS, rules.GLOB_CALLS))
+APPLY_RE = re.compile(r"(?:^|[.:])(" + "|".join(map(re.escape, rules.APPLY_CALLS)) + r")$")
+
+def regex_glob(r):
+    """list.files pattern -> glob: "^de_.*\\.csv$" -> de_*.csv, "\\.tsv" -> *.tsv, anything fancier -> *"""
+    g = re.sub(r"\.(?:[*+]|\{\d+(?:,\d*)?\})|\\*\.", lambda m: "." if m.group().endswith(".") else "*", r.lstrip("^").rstrip("$"))
+    return "*" if re.search(r"[\[\](){}+?|\\^$]", g) else re.sub(r"\*+", "*", ("" if r.startswith("^") else "*") + g)
+
 def is_builder(fn):
     return bool(JOIN_RE.search(fn) or CONCAT_RE.search(fn) or WRAP_RE.search(fn) or FORMAT_RE.search(fn))
 
@@ -115,6 +123,11 @@ def _apply(fn, args, v=None):
         return re.sub(r"%[-\d.]*[sdfgi]", lambda m: next(it, "*"), pos[0])
     if re.search(r"(?:^|[.:])(?:glue|str_glue)$", fn) and pos: return _interp(pos[0], v or {})
     if WRAP_RE.search(fn) and len(pos) == 1: return pos[0]
+    kw = dict((n, a) for n, a in args if n)
+    if LIST_RE.search(fn):  # list.files(dir, pattern = regex), fs::dir_ls(dir, glob = ) -> dir/<glob>
+        pat = kw.get("glob") or (regex_glob(kw.get("pattern") or kw.get("regexp")) if kw.get("pattern") or kw.get("regexp") else "*")
+        return (kw.get("path") or (pos[0] if pos else ".")).rstrip("/") + "/" + pat
+    if GLOB_RE.search(fn) and pos: return pos[0]  # Sys.glob("a/*.csv"), glob.glob(...)
     return "*"
 
 def evaluate(expr, v):
@@ -125,6 +138,7 @@ def evaluate(expr, v):
 WRITE_VERB, READ_VERB = (re.compile("|".join(vs), re.I) for vs in (rules.WRITE_VERBS, rules.READ_VERBS))
 WRITE_MODE, READ_MODE = (re.compile(r"""^\s*(?:mode\s*=\s*)?["'](?:""" + "|".join(map(re.escape, ms)) + r""")["']\s*$""")
                          for ms in (rules.WRITE_MODES, rules.READ_MODES))
+PERL_MODE = re.compile(r"""^\s*["'](\+?[<>]{1,2})\s*[^"'<>\s][^"']*["']\s*$""")  # open(FH, ">out.txt"): a mode, then the name
 CALL_ANY = re.compile(r"([A-Za-z_.][\w.$]*(?:::[A-Za-z_.][\w.$]*)?)\s*\(")
 GEN_ASG = re.compile(r"^\s*(?:export\s+|local\s+)?([A-Za-z_.][\w.$]*)\s*(?:<<-|<-|:=|=(?!=))\s*(.+)$", re.S)
 FILE_LIKE = re.compile(rules.FILE_EXT_RE)
@@ -176,14 +190,26 @@ def blank(m):
 
 
 def direction(fn, args):
-    if any(WRITE_MODE.match(a) for a in args): return "write"
-    if any(READ_MODE.match(a) for a in args): return "read"
+    modes = [m.group(1) for m in map(PERL_MODE.match, args) if m]
+    if any(WRITE_MODE.match(a) for a in args) or any(m in rules.WRITE_MODES for m in modes): return "write"
+    if any(READ_MODE.match(a) for a in args) or any(m in rules.READ_MODES for m in modes): return "read"
     name = fn.rsplit("::", 1)[-1]
     parts, dot = re.split(r"[.:$]", name), name.split(".")  # dot: verb.object is R's dot form only, not write$plot
     if WRITE_VERB.search(parts[-1]): return "write"
     if READ_VERB.search(parts[-1]): return "read"
     if len(dot) > 1 and dot[0] in rules.DOTTED_WRITE_WORDS: return "write"  # R: write.fst()
     if len(dot) > 1 and dot[0] in rules.DOTTED_READ_WORDS: return "read"  # R: read.csv()
+    m = APPLY_RE.search(name)
+    if m:  # lapply(files, readRDS): the applied function decides, at its position or as FUN = / .f =
+        pos = [a for a in args if not NAMED.match(a)]
+        named = [NAMED.sub("", a, count=1) for a in args if NAMED.match(a) and a.split("=")[0].strip() in rules.APPLY_FUNCTION_ARGS]
+        shift = sum(1 for a in args if NAMED.match(a) and a.split("=")[0].strip() in rules.APPLY_DATA_ARGS)
+        # a named data argument frees a position only before the function (lapply(X = files, readRDS))
+        at = [i - shift if i else 0 for i in rules.APPLY_CALLS[m.group(1)]]
+        fns = named or [pos[i] for i in at if 0 <= i < len(pos)]
+        for a in fns:
+            if re.fullmatch(r"\s*[A-Za-z_.][\w.]*(?:::[A-Za-z_.][\w.]*)?\s*", a) and direction(a.strip(), []) != "mention":
+                return direction(a.strip(), [])
     return "mention"
 
 def snippet(st, p):
@@ -241,13 +267,75 @@ def shell_words(st, v):
         if FILE_LIKE.search(p) and len(p.replace("*", "")) >= 3 and "://" not in p: ev.append((p, kind, snippet(st, p)))
     return ev
 
-def generic_scan(code, v0=None, stmts=None, vars_only=False, writers=None, code_in_strings=False, shell=False):
+SNAKE_DIRECTIVE = re.compile(r"^(\s*)(\w+):(.*)$")
+
+def depth(line):
+    """brackets opened minus closed on a line, outside strings and comments"""
+    d = 0
+    for t in LEX_RE.finditer(line):
+        if t.group()[0] == "#": break
+        d += {"(": 1, "[": 1, ")": -1, "]": -1}.get(t.group(), 0)
+    return d
+
+def uncomment(line):
+    """line without its # comment (a # inside a string stays)"""
+    return line[:next((t.start() for t in LEX_RE.finditer(line) if t.group()[0] == "#"), len(line))].rstrip()
+
+def snake_items(a):
+    """one declared file expression -> its files: lists flattened, temp("x") and the like unwrapped"""
+    a = NAMED.sub("", a, count=1).strip()
+    if a[:1] == "(" and a[-1:] == ")" and split_call("f" + a, 2)[1] == len(a):  # ("x"): grouping, not ("a") + ("b")
+        return [x for y in split_call("f" + a, 2)[0] for x in snake_items(y)]
+    if a[:1] == "[" and a[-1:] == "]": return [x for y in split_call("f(" + a[1:-1] + ")", 2)[0] for x in snake_items(y)]
+    m = re.match(r"([\w.]+)\s*\(", a)
+    if m and m.group(1).rsplit(".", 1)[-1] in rules.SNAKEMAKE_WRAPPERS:  # temp("x"), expand("x", s=S)
+        return snake_items(next((x for x in split_call(a, m.end())[0] if not NAMED.match(x)), ""))
+    return [a]
+
+def snakemake_files(code, v0=None):
+    """Snakemake rules -> [(path, write|read, line)]: files in output:/log:/benchmark: (write) and input: (read).
+    A directive runs from its line over the more indented lines below it; comments and triple-quoted text are not
+    part of it. Each file is one expression, evaluated with the variables assigned above it; lists are flattened,
+    temp("x") and the like unwrapped, {wildcards} (also {s,\\d{3}}) become *."""
+    code = re.sub(r'"""[\s\S]*?"""|\'\'\'[\s\S]*?\'\'\'', lambda m: re.sub(r"[^\n]", " ", m.group()), code)
+    ev, v, block, lines = [], dict(v0 or {}), None, code.split("\n")  # block: [kind, indent, text, lines as shown]
+
+    def flush():
+        if not (block and block[0]): return
+        for item in split_call("f(" + "\n".join(block[2]) + ")", 2)[0]:
+            for a in snake_items(item):
+                p = re.sub(r"\{(?:[^{}]|\{[^{}]*\})*\}", "*", evaluate(a, v))
+                if (FILE_LIKE.search(p) or block[0] == "write") and len(p.replace("*", "")) >= 3 and "://" not in p:
+                    # a declared output without extension: a flag file or a directory(); "/*" lets the link step decide
+                    ev.append((p if FILE_LIKE.search(p) else p.rstrip("/") + "/*", block[0], snippet("\n".join(block[3]), p)))
+
+    i = 0
+    while i < len(lines):
+        line = lines[i]; i += 1
+        line = uncomment(line)
+        if not line.strip(): continue  # blank or comment: a directive goes on
+        m, cur = SNAKE_DIRECTIVE.match(line), len(line) - len(line.lstrip())
+        if block and cur > block[1] and not m: block[2].append(line); block[3].append(line.strip()); continue
+        flush()
+        block = [("write" if m.group(2) in rules.SNAKEMAKE_WRITE else "read" if m.group(2) in rules.SNAKEMAKE_READ
+                  else None), cur, [m.group(3)], [line.strip()]] if m else None
+        a = GEN_ASG.match(line) if not m and cur == 0 else None
+        if a:  # top-level variables, in file order; an assignment goes on while its brackets are open
+            st, d = line, depth(line)
+            while d > 0 and i < len(lines): st += "\n" + uncomment(lines[i]); d += depth(lines[i]); i += 1
+            a = GEN_ASG.match(st)
+            v[a.group(1)] = evaluate(a.group(2), v)
+    flush()
+    return ev
+
+def generic_scan(code, v0=None, stmts=None, vars_only=False, writers=None, code_in_strings=False, shell=False, snakemake=False):
     """-> dict(ev=[(pattern, write|read|mention, statement)], names={literal}, uses={script name}, vars={}, stmts=[]).
     vars_only: only follow assignments and script references (cheap first pass).
     writers: the project's own write functions from fms.json, {name: argument name or position of the path};
     a folder there means every file in it.
     code_in_strings: calls inside string literals count too (shell scripts, Snakemake: rules.CODE_IN_STRINGS).
-    shell: also read each statement as a command line (rules.SHELL_SCRIPTS)."""
+    shell: also read each statement as a command line (rules.SHELL_SCRIPTS).
+    snakemake: also the files declared by rules (rules.SNAKEMAKE_SCRIPTS)."""
     writers = writers or {}
     v = dict(v0 or {})
     ev, names, uses = [], set(), set()
@@ -280,6 +368,7 @@ def generic_scan(code, v0=None, stmts=None, vars_only=False, writers=None, code_
                 for a in args:
                     a = NAMED.sub("", a, count=1)
                     p = evaluate(a, v)
+                    if PERL_MODE.match(a): p = re.sub(r"^\+?[<>]{1,2}\s*", "", p)  # ">out.txt" names out.txt
                     if FILE_LIKE.search(p) and len(p.replace("*", "")) >= 3 and "://" not in p:
                         ev.append((p, kind, snippet(st, p)))
                     lit = re.fullmatch(r"""\s*["']([\w.\-]{4,})["']\s*""", a)
@@ -295,6 +384,7 @@ def generic_scan(code, v0=None, stmts=None, vars_only=False, writers=None, code_
             if not (own and not vars_only): v[m.group(1)] = val  # else shell_words already set it, in line order
             if not vars_only and FILE_LIKE.search(val) and len(val.replace("*", "")) >= 3 and "://" not in val:
                 ev.append((val, "mention", snippet(st, val)))
+    if snakemake and not vars_only: ev += snakemake_files(code, v0)
     return {"ev": sorted(set(ev)), "names": names, "uses": uses, "vars": v, "stmts": stmts}
 
 
@@ -523,7 +613,8 @@ def _parse2(job):
     """second pass: evidence, with the variables inherited from source()d / imported scripts"""
     s, v0, stmts, writers = job
     g = generic_scan(read_code(s)[0], v0, stmts=stmts, writers=writers,
-                     code_in_strings=s.lower().endswith(rules.CODE_IN_STRINGS), shell=s.lower().endswith(rules.SHELL_SCRIPTS))
+                     code_in_strings=s.lower().endswith(rules.CODE_IN_STRINGS), shell=s.lower().endswith(rules.SHELL_SCRIPTS),
+                     snakemake=s.lower().endswith(rules.SNAKEMAKE_SCRIPTS))
     return [list(e) for e in g["ev"]], sorted(g["names"])
 
 def pmap(fn, items):

@@ -22,6 +22,12 @@
     "results/counts/filtered/S3.parquet": [
       "pipeline/02_filter.py"
     ],
+    "results/annotation.gff": [
+      "pipeline/03_annotate.pl"
+    ],
+    "results/annotate.log": [
+      "pipeline/03_annotate.pl"
+    ],
     "results/stats/dds.rds": [
       "analysis/02_normalize.R"
     ],
@@ -61,7 +67,28 @@
       "pipeline/00_fetch.sh"
     ],
     "figures/archive/poster_2024.pdf": [],
-    "reports/notes.docx": []
+    "reports/notes.docx": [],
+    "data/raw/S1.fastq.gz": [],
+    "results/qc/S1_fastqc.html": [
+      "workflow/Snakefile"
+    ],
+    "logs/fastqc_S1.log": [
+      "workflow/Snakefile"
+    ],
+    "data/raw/S2.fastq.gz": [],
+    "results/qc/S2_fastqc.html": [
+      "workflow/Snakefile"
+    ],
+    "logs/fastqc_S2.log": [
+      "workflow/Snakefile"
+    ],
+    "data/raw/S3.fastq.gz": [],
+    "results/qc/S3_fastqc.html": [
+      "workflow/Snakefile"
+    ],
+    "logs/fastqc_S3.log": [
+      "workflow/Snakefile"
+    ]
   },
   "stale": [
     "figures/qc/signal.png"
