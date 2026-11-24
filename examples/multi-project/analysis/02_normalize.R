@@ -1,10 +1,8 @@
 # Normalise the counts of all samples.
 library(DESeq2)
-samples <- c("S1", "S2", "S3")
-counts <- list()
-for (s in samples) counts[[s]] <- arrow::read_parquet(file.path("results/counts/filtered", paste0(s, ".parquet")))
-counts <- do.call(cbind, counts)
-dds <- DESeqDataSetFromMatrix(counts, data.frame(s = samples), ~1)
+files <- list.files("results/counts/filtered", pattern = "\\.parquet$", full.names = TRUE)
+counts <- do.call(cbind, lapply(files, arrow::read_parquet))
+dds <- DESeqDataSetFromMatrix(counts, data.frame(s = basename(files)), ~1)
 dds <- estimateSizeFactors(dds)
 saveRDS(dds, "results/stats/dds.rds")
 write.csv(sizeFactors(dds), "results/stats/size_factors.csv")
