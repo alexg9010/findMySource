@@ -7,6 +7,8 @@ a patch bump (0.x.y) covers everything else, new features included.
 
 ## Unreleased
 
+- Shell command lines (shell scripts, Snakemake `shell:`, Makefiles): redirections (`> out.txt`), output flags
+  (`curl -o`, `wget -O`, `--output=`) and `tee` are writes, `< in.txt` a read, and `$VAR` is expanded.
 - Snakemake: files in a rule's `output:`, `log:` and `benchmark:` are writes and `input:` files reads, also over
   several lines and inside `temp()`/`expand()`; `{wildcards}` match any name.
 - Directory listings (`list.files(dir, pattern =)`, `fs::dir_ls()`, `Sys.glob()`, `glob.glob()`) stand for the files

@@ -25,7 +25,7 @@ paths from command-line args are unknown; only the Network tab needs internet (v
 Config keys (JSON, all optional): scripts, outputs, exclude, aliases, extensions, hidden, write_functions.
   {"scripts": ["scripts"], "outputs": ["results", "figures"], "aliases": {"/local": "/data/local"}}
 """
-import argparse, bisect, csv, datetime, fnmatch, hashlib, json, os, re, subprocess, sys, time
+import argparse, bisect, csv, datetime, fnmatch, hashlib, json, os, re, shlex, subprocess, sys, time
 from collections import Counter, defaultdict
 
 from . import __version__, rules
@@ -218,6 +218,55 @@ def snippet(st, p):
     hit = max(lines, key=lambda l: sum(k in l for k in keys))  # the line with most pieces of the name (ties: first)
     return (hit if hit == lines[0] else f"{lines[0][:60]} … {hit}")[:200]
 
+SHELL_REDIR = re.compile(r"^(?:\d|&)?(>>?|<)\|?(.*)$")  # > x, >>x, 2> x, &> x, < x
+
+SHELL_OPS = re.compile(r"""("(?:[^"\\]|\\.)*"|'[^']*'|\\.)|(?:\d|&)?(?:>>?|<)\|?|\|\|?|;|&&""")
+
+def shell_split(s):
+    """shell words; operators outside quotes are words of their own (x>out.txt -> x > out.txt), and $(...) / `...`
+    is one run-time part (\0, unknown) even with spaces inside"""
+    s = re.sub(r"\$\([^()]*\)|`[^`]*`", "\0", s)
+    s = SHELL_OPS.sub(lambda m: m.group() if m.group(1) else " " + m.group() + " ", s)
+    try: return shlex.split(s)
+    except ValueError: return s.split()  # unbalanced quote
+
+def shell_expand(w, v):
+    """$x, ${x} -> value of x; $(...), `...` and unknown variables -> '*'"""
+    w = w.replace("\0", "*")  # a substitution, see shell_split
+    return re.sub(r"\$\{?(\w+)\}?", lambda m: v.get(m.group(1), "*"), re.sub(r"\$\([^)]*\)|`[^`]*`", "*", w))
+
+def shell_words(st, v):
+    """a command line -> [(path, write|read|mention, statement)]: redirections, output flags (-o x, --output=x),
+    tee's files, and any other file-like word as a mention. A quoted word is one word, except after Snakemake's
+    shell: or -c (bash -c "..."), where it is a command line itself."""
+    words, child, group = shell_split(st), None, 0  # child: the variables of a child shell (bash -c "...", shell: "...")
+    words = [(x, sub) for i, w in enumerate(words) for sub in [i if i and words[i - 1] in ("shell:", "-c") and re.search(r"\s", w) else 0]
+             for x in (shell_split(w) if sub else [w])]
+    ev, nxt, tee, cmd, back = [], None, False, True, False  # back: the command comes after this word
+    for i, (w, sub) in enumerate(words):
+        if sub and sub != group: child, group = dict(v), sub  # a new child shell starts from the variables now
+        vs = child if sub else v
+        kind, nxt = nxt, None
+        if w in ("|", ";", "&&", "||", "shell:", "-c"): tee, cmd = False, True; continue  # next word: a command
+        at_cmd, cmd, back = cmd, back, False
+        if at_cmd and kind is None and re.match(r"^\w+=", w):  # LC_ALL=C tee x; OUT=new; ... holds from here on
+            if i + 1 == len(words) or words[i + 1][0] in ("|", ";", "&&", "||"): vs[w.split("=")[0]] = shell_expand(w.split("=", 1)[1], vs)
+            cmd = True; continue
+        if kind is None:
+            m = SHELL_REDIR.match(w)
+            if m:  # > log.txt tee x: a redirection before the command keeps its place
+                kind = "read" if m.group(1) == "<" else "write"
+                if not m.group(2): nxt, back = kind, at_cmd; continue
+                w, cmd = m.group(2), at_cmd
+            elif w in rules.SHELL_WRITE_FLAGS: nxt = "write"; continue
+            elif w.split("=", 1)[0] in rules.SHELL_WRITE_FLAGS and "=" in w: kind, w = "write", w.split("=", 1)[1]
+            elif at_cmd and os.path.basename(w) in rules.SHELL_WRITE_COMMANDS: tee = True; continue
+        p = shell_expand(w, vs)
+        kind = kind or ("write" if tee and not w.startswith("-") else "mention")
+        if kind == "mention" and ("$" in w or "\0" in w): continue  # a variable's own assignment already mentions it
+        if FILE_LIKE.search(p) and len(p.replace("*", "")) >= 3 and "://" not in p: ev.append((p, kind, snippet(st, p)))
+    return ev
+
 SNAKE_DIRECTIVE = re.compile(r"^(\s*)(\w+):(.*)$")
 
 def depth(line):
@@ -279,18 +328,20 @@ def snakemake_files(code, v0=None):
     flush()
     return ev
 
-def generic_scan(code, v0=None, stmts=None, vars_only=False, writers=None, code_in_strings=False, snakemake=False):
+def generic_scan(code, v0=None, stmts=None, vars_only=False, writers=None, code_in_strings=False, shell=False, snakemake=False):
     """-> dict(ev=[(pattern, write|read|mention, statement)], names={literal}, uses={script name}, vars={}, stmts=[]).
     vars_only: only follow assignments and script references (cheap first pass).
     writers: the project's own write functions from fms.json, {name: argument name or position of the path};
     a folder there means every file in it.
     code_in_strings: calls inside string literals count too (shell scripts, Snakemake: rules.CODE_IN_STRINGS).
+    shell: also read each statement as a command line (rules.SHELL_SCRIPTS).
     snakemake: also the files declared by rules (rules.SNAKEMAKE_SCRIPTS)."""
     writers = writers or {}
     v = dict(v0 or {})
     ev, names, uses = [], set(), set()
     stmts = statements(code) if stmts is None else stmts
     for st in stmts:
+        before = v  # the variables before this statement: its own assignment is expanded with them, once
         for m in re.finditer(r"""["']([^"'\n]+)["']""", st):  # scripts referenced by name (source("x.R"), "python y.py")
             words = m.group(1).split()
             if words and words[-1].lower().endswith(SCRIPT_EXT): uses.add(os.path.basename(words[-1]))
@@ -323,10 +374,14 @@ def generic_scan(code, v0=None, stmts=None, vars_only=False, writers=None, code_
                     lit = re.fullmatch(r"""\s*["']([\w.\-]{4,})["']\s*""", a)
                     if lit and kind == "write" and not FILE_LIKE.search(lit.group(1)):
                         names.add(lit.group(1))  # save_table(df, "de_table") -> de_table.*
+            if shell: before = dict(v); ev += shell_words(st, v)
         m = GEN_ASG.match(st)
         if m:
-            val = evaluate(m.group(2), v)
-            v[m.group(1)] = val
+            words = shell_split(m.group(2)) if shell and re.match(r"\s*(?:export\s+|local\s+)?[\w.]+=\S", st) else []
+            # OUT=results/qc (shell, no spaces) is text; OUT = BASE (Python in a Snakefile) an expression
+            own = words[1:2] in ([], [";"], ["&&"], ["||"], ["|"]) and words  # OUT=x alone or before ;
+            val = shell_expand(words[0], before) if own else evaluate(m.group(2), before)
+            if not (own and not vars_only): v[m.group(1)] = val  # else shell_words already set it, in line order
             if not vars_only and FILE_LIKE.search(val) and len(val.replace("*", "")) >= 3 and "://" not in val:
                 ev.append((val, "mention", snippet(st, val)))
     if snakemake and not vars_only: ev += snakemake_files(code, v0)
@@ -550,7 +605,7 @@ def walk(roots, exclude, hidden=False, skip=()):
 def _parse1(s):
     """first pass over one script: own variables, script references, statements, R fallback"""
     src, params = read_code(s)
-    g = generic_scan(src, params, vars_only=True)
+    g = generic_scan(src, params, vars_only=True, shell=s.lower().endswith(rules.SHELL_SCRIPTS))
     return {"params": params, "uses": sorted(g["uses"]), "vars": g["vars"], "stmts": g["stmts"],
             "lang": parse_script(src, params, code_in_strings=s.lower().endswith(rules.CODE_IN_STRINGS))}
 
@@ -558,7 +613,7 @@ def _parse2(job):
     """second pass: evidence, with the variables inherited from source()d / imported scripts"""
     s, v0, stmts, writers = job
     g = generic_scan(read_code(s)[0], v0, stmts=stmts, writers=writers,
-                     code_in_strings=s.lower().endswith(rules.CODE_IN_STRINGS),
+                     code_in_strings=s.lower().endswith(rules.CODE_IN_STRINGS), shell=s.lower().endswith(rules.SHELL_SCRIPTS),
                      snakemake=s.lower().endswith(rules.SNAKEMAKE_SCRIPTS))
     return [list(e) for e in g["ev"]], sorted(g["names"])
 

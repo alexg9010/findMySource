@@ -60,8 +60,12 @@
     ],
     "data/raw/clinical.csv": [],
     "data/raw/signal.csv": [],
-    "data/reference/genes.gtf": [],
-    "data/reference/genome.fa.gz": [],
+    "data/reference/genes.gtf": [
+      "pipeline/00_fetch.sh"
+    ],
+    "data/reference/genome.fa.gz": [
+      "pipeline/00_fetch.sh"
+    ],
     "figures/archive/poster_2024.pdf": [],
     "reports/notes.docx": [],
     "data/raw/S1.fastq.gz": [],
