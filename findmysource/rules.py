@@ -6,16 +6,16 @@ each rule is meant to catch and what it must leave alone.
 """
 
 # ---------- which files are scripts ----------
-SCRIPT_EXT = (".r", ".rmd", ".qmd", ".py", ".ipynb", ".sh", ".smk", ".jl", ".nf", ".pl", ".m")
-SCRIPT_NAMES = ("snakefile", "makefile")  # matched as the end of the file name, like the extensions
+# workflow engines (Snakemake, Nextflow, Make) are left out: they track their outputs themselves
+SCRIPT_EXT = (".r", ".rmd", ".qmd", ".py", ".ipynb", ".sh", ".jl", ".pl", ".m")
 NOTEBOOK_EXT = (".rmd", ".qmd", ".ipynb")  # rendered by knitr/Quarto/Jupyter: stem-rule and chunk-folder
 # skipped everywhere unless fms.json sets "exclude": editor, RStudio and cache files
 EXCLUDE = ["rstudio-server-db", "rstudio_state", "__pycache__", "*_cache", "*.RData", ".Rhistory", "#*#", "%",
            ".DS_Store"]
 SCRIPT_ONLY_EXCLUDE = ["build", "dist"]
-# scripts that run other code from strings (Rscript -e "...", python -c "...", Snakemake shell: "..."): calls
+# scripts that run other code from strings (Rscript -e "...", python -c "..."): calls
 # inside their string literals count. In all other scripts a string is text: 'saveRDS(x, "a.rds")' is no call.
-CODE_IN_STRINGS = (".sh", ".smk", ".nf", "snakefile", "makefile",
+CODE_IN_STRINGS = (".sh",
                    ".jl",  # Julia runs $(...) inside strings: "$(write(out, data))"
                    ".m")  # MATLAB: ' is also the transpose operator (y = x'), so its quotes cannot be paired  # copies of scripts made by Python packaging; outputs may live there
 
@@ -100,8 +100,8 @@ STRING_EXAMPLES = [  # same format as the evidence examples: a call inside a str
      "links": {"out/c.csv": "run.sh write"}},
 ]
 
-# shell command lines (shell scripts, Snakemake shell:, Makefile recipes): no calls, so words are read like a shell
-SHELL_SCRIPTS = (".sh", ".smk", "snakefile", "makefile")
+# shell command lines: no calls, so words are read like a shell
+SHELL_SCRIPTS = (".sh",)
 SHELL_WRITE_FLAGS = ["-o", "-O", "--output", "--out", "--outfile", "--output-file", "--output-document"]
 SHELL_WRITE_COMMANDS = ["tee"]  # every file argument is written
 SHELL_EXAMPLES = [  # same format as the evidence examples
@@ -119,9 +119,6 @@ SHELL_EXAMPLES = [  # same format as the evidence examples
      "files": {"v.sh": "OUT=results/qc\nfastqc x.fq -o $OUT\necho done | tee \"${OUT}/done.txt\"\n",
                "results/qc/done.txt": ""},
      "links": {"results/qc/done.txt": "v.sh write"}},
-    {"why": "a Snakemake shell: command is a command line too",
-     "files": {"Snakefile": "rule a:\n    shell: \"bedtools sort -i x.bed > out/s.bed\"\n", "out/s.bed": ""},
-     "links": {"out/s.bed": "Snakefile write"}},
     {"why": "a redirection needs no spaces around it",
      "files": {"p.sh": "printf x>out/result.txt\n", "out/result.txt": ""},
      "links": {"out/result.txt": "p.sh write"}},
@@ -135,9 +132,6 @@ SHELL_EXAMPLES = [  # same format as the evidence examples
     {"why": "tee writes only when it is the command, not an argument",
      "files": {"t.sh": "echo tee data/input.txt\n", "data/input.txt": ""},
      "links": {"data/input.txt": "t.sh mention"}},
-    {"why": "a Snakefile's Python assignments stay expressions: OUT = BASE is BASE's value",
-     "files": {"Snakefile": "BASE = \"results\"\nOUT = BASE\ndf.to_csv(OUT + \"/t.csv\")\n", "results/t.csv": ""},
-     "links": {"results/t.csv": "Snakefile write"}},
     {"why": "an escaped operator is part of its word",
      "files": {"e.sh": "echo out/a\\>b.txt\n", "b.txt": ""},
      "links": {"b.txt": ""}},
@@ -171,68 +165,6 @@ SHELL_EXAMPLES = [  # same format as the evidence examples
     {"why": "only shell-like scripts: in R and Python > is a comparison",
      "files": {"c.R": "if (n > 3) x <- 1\nprint(n > out.txt)\n", "out.txt": ""},
      "links": {"out.txt": ""}},
-]
-
-# Snakemake rules declare their files: output:, log: and benchmark: are written, input: is read. {wildcards} -> *
-SNAKEMAKE_SCRIPTS = (".smk", "snakefile")
-SNAKEMAKE_WRITE = ["output", "log", "benchmark"]
-SNAKEMAKE_READ = ["input"]
-SNAKEMAKE_WRAPPERS = ["temp", "protected", "directory", "touch", "ancient", "pipe", "expand", "report"]  # file: 1st arg
-SNAKEMAKE_EXAMPLES = [  # same format as the evidence examples
-    {"why": "output: declares what a rule writes, {wildcards} match any name",
-     "files": {"Snakefile": "rule qc:\n    input: \"data/{s}.fq\"\n    output: \"out/{s}_qc.html\"\n    shell: \"qc {input}\"\n",
-               "data/a.fq": "", "out/a_qc.html": ""},
-     "links": {"data/a.fq": "", "out/a_qc.html": "Snakefile write-glob"}},
-    {"why": "a directive can span several lines, with named files and temp()/protected() wrappers",
-     "files": {"rules/align.smk": "rule align:\n    output:\n        bam=temp(\"out/x.bam\"),\n"
-                                  "        bai=protected(\"out/x.bam.bai\")\n    log:\n        \"logs/align.log\"\n"
-                                  "    params: extra=\"out/not_a_file.txt\"\n",
-               "out/x.bam": "", "out/x.bam.bai": "", "logs/align.log": "", "out/not_a_file.txt": ""},
-     "links": {"out/x.bam": "rules/align.smk write", "out/x.bam.bai": "rules/align.smk write",
-               "logs/align.log": "rules/align.smk write", "out/not_a_file.txt": ""}},  # params: declares no file
-    {"why": "a comment inside a directive declares nothing",
-     "files": {"Snakefile": "rule a:\n    output:\n        # \"data/raw.csv\" is an input\n        \"out/a.csv\"\n",
-               "data/raw.csv": "", "out/a.csv": ""},
-     "links": {"data/raw.csv": "", "out/a.csv": "Snakefile write"}},
-    {"why": "a declared file is a whole expression, not each string in it",
-     "files": {"Snakefile": "import os\nrule r:\n    output: os.path.join(\"results\", \"report.csv\")\n",
-               "results/report.csv": "", "archive/report.csv": ""},
-     "links": {"results/report.csv": "Snakefile write", "archive/report.csv": ""}},
-    {"why": "a directive uses the variables as they are at that point of the file",
-     "files": {"Snakefile": "OUT = \"first\"\nrule a:\n    output: f\"{OUT}/report.txt\"\nOUT = \"second\"\n",
-               "first/report.txt": "", "second/report.txt": ""},
-     "links": {"first/report.txt": "Snakefile write", "second/report.txt": ""}},
-    {"why": "a list declares each of its files, also inside temp()",
-     "files": {"Snakefile": "rule l:\n    output: [\"out/a.txt\", \"out/b.txt\"], temp([\"out/c.txt\"])\n",
-               "out/a.txt": "", "out/b.txt": "", "out/c.txt": ""},
-     "links": {"out/a.txt": "Snakefile write", "out/b.txt": "Snakefile write", "out/c.txt": "Snakefile write"}},
-    {"why": "a wildcard with a regex constraint is one wildcard",
-     "files": {"Snakefile": "rule c:\n    output: r\"out/{s,\\d{3}}.txt\"\n", "out/123.txt": ""},
-     "links": {"out/123.txt": "Snakefile write-glob"}},
-    {"why": "a triple-quoted string is text, even when it looks like a directive",
-     "files": {"Snakefile": "\"\"\"\nUsage:\n    output: \"data/raw.csv\"\n\"\"\"\n", "data/raw.csv": ""},
-     "links": {"data/raw.csv": ""}},
-    {"why": "an assignment over several lines is evaluated whole",
-     "files": {"Snakefile": "import os\nOUT = os.path.join(\"results\",\n                   \"qc\")\n"
-                            "rule qc:\n    output: f\"{OUT}/report.txt\"\n",
-               "results/qc/report.txt": "", "results/report.txt": ""},
-     "links": {"results/qc/report.txt": "Snakefile write", "results/report.txt": ""}},
-    {"why": "parentheses around a file are only grouping",
-     "files": {"Snakefile": "rule p:\n    output: (\"out/p.txt\")\n", "out/p.txt": ""},
-     "links": {"out/p.txt": "Snakefile write"}},
-    {"why": "a declared output needs no extension: a flag file, or a directory() and the files in it",
-     "files": {"Snakefile": "rule s:\n    output: \"results/SUCCESS\", directory(\"results/qc\")\n",
-               "results/SUCCESS": "", "results/qc/a.html": ""},
-     "links": {"results/SUCCESS": "Snakefile write", "results/qc/a.html": "Snakefile write-glob"}},
-    {"why": "comments inside a multi-line assignment are not part of it",
-     "files": {"Snakefile": "import os\nOUT = os.path.join(\n    \"results\",  # root\n    \"qc\")\n"
-                            "rule qc:\n    output: f\"{OUT}/report.txt\"\n",
-               "results/qc/report.txt": "", "results/other/report.txt": ""},
-     "links": {"results/qc/report.txt": "Snakefile write", "results/other/report.txt": ""}},
-    {"why": "a rule that collects with expand() reads; the rule that makes the files is the source",
-     "files": {"Snakefile": "rule all:\n    input: expand(\"out/{s}.txt\", s=S)\n"
-                            "rule make:\n    output: \"out/{s}.txt\"\n", "out/a.txt": ""},
-     "links": {"out/a.txt": "Snakefile write-glob"}},
 ]
 
 # ---------- path builders, recognised by the shape of their name in any language ----------

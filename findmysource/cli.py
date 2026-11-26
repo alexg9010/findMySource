@@ -52,7 +52,7 @@ def _string(t, v):
     if not m: return "*"
     pre, body = m.group(1).lower(), m.group(3)
     if "f" in pre: body = _interp(body, v)  # Python f-string
-    # shell / Snakemake style ${name}; unknown -> '*'
+    # shell style ${name}; unknown -> '*'
     return re.sub(r"\$\{(\w+)\}", lambda x: v.get(x.group(1), "*"), body)
 
 def _prim(tok, i, v):
@@ -237,17 +237,17 @@ def shell_expand(w, v):
 
 def shell_words(st, v):
     """a command line -> [(path, write|read|mention, statement)]: redirections, output flags (-o x, --output=x),
-    tee's files, and any other file-like word as a mention. A quoted word is one word, except after Snakemake's
-    shell: or -c (bash -c "..."), where it is a command line itself."""
-    words, child, group = shell_split(st), None, 0  # child: the variables of a child shell (bash -c "...", shell: "...")
-    words = [(x, sub) for i, w in enumerate(words) for sub in [i if i and words[i - 1] in ("shell:", "-c") and re.search(r"\s", w) else 0]
+    tee's files, and any other file-like word as a mention. A quoted word is one word, except after
+    -c (bash -c "..."), where it is a command line itself."""
+    words, child, group = shell_split(st), None, 0  # child: the variables of a child shell (bash -c "...")
+    words = [(x, sub) for i, w in enumerate(words) for sub in [i if i and words[i - 1] == "-c" and re.search(r"\s", w) else 0]
              for x in (shell_split(w) if sub else [w])]
     ev, nxt, tee, cmd, back = [], None, False, True, False  # back: the command comes after this word
     for i, (w, sub) in enumerate(words):
         if sub and sub != group: child, group = dict(v), sub  # a new child shell starts from the variables now
         vs = child if sub else v
         kind, nxt = nxt, None
-        if w in ("|", ";", "&&", "||", "shell:", "-c"): tee, cmd = False, True; continue  # next word: a command
+        if w in ("|", ";", "&&", "||", "-c"): tee, cmd = False, True; continue  # next word: a command
         at_cmd, cmd, back = cmd, back, False
         if at_cmd and kind is None and re.match(r"^\w+=", w):  # LC_ALL=C tee x; OUT=new; ... holds from here on
             if i + 1 == len(words) or words[i + 1][0] in ("|", ";", "&&", "||"): vs[w.split("=")[0]] = shell_expand(w.split("=", 1)[1], vs)
@@ -267,75 +267,13 @@ def shell_words(st, v):
         if FILE_LIKE.search(p) and len(p.replace("*", "")) >= 3 and "://" not in p: ev.append((p, kind, snippet(st, p)))
     return ev
 
-SNAKE_DIRECTIVE = re.compile(r"^(\s*)(\w+):(.*)$")
-
-def depth(line):
-    """brackets opened minus closed on a line, outside strings and comments"""
-    d = 0
-    for t in LEX_RE.finditer(line):
-        if t.group()[0] == "#": break
-        d += {"(": 1, "[": 1, ")": -1, "]": -1}.get(t.group(), 0)
-    return d
-
-def uncomment(line):
-    """line without its # comment (a # inside a string stays)"""
-    return line[:next((t.start() for t in LEX_RE.finditer(line) if t.group()[0] == "#"), len(line))].rstrip()
-
-def snake_items(a):
-    """one declared file expression -> its files: lists flattened, temp("x") and the like unwrapped"""
-    a = NAMED.sub("", a, count=1).strip()
-    if a[:1] == "(" and a[-1:] == ")" and split_call("f" + a, 2)[1] == len(a):  # ("x"): grouping, not ("a") + ("b")
-        return [x for y in split_call("f" + a, 2)[0] for x in snake_items(y)]
-    if a[:1] == "[" and a[-1:] == "]": return [x for y in split_call("f(" + a[1:-1] + ")", 2)[0] for x in snake_items(y)]
-    m = re.match(r"([\w.]+)\s*\(", a)
-    if m and m.group(1).rsplit(".", 1)[-1] in rules.SNAKEMAKE_WRAPPERS:  # temp("x"), expand("x", s=S)
-        return snake_items(next((x for x in split_call(a, m.end())[0] if not NAMED.match(x)), ""))
-    return [a]
-
-def snakemake_files(code, v0=None):
-    """Snakemake rules -> [(path, write|read, line)]: files in output:/log:/benchmark: (write) and input: (read).
-    A directive runs from its line over the more indented lines below it; comments and triple-quoted text are not
-    part of it. Each file is one expression, evaluated with the variables assigned above it; lists are flattened,
-    temp("x") and the like unwrapped, {wildcards} (also {s,\\d{3}}) become *."""
-    code = re.sub(r'"""[\s\S]*?"""|\'\'\'[\s\S]*?\'\'\'', lambda m: re.sub(r"[^\n]", " ", m.group()), code)
-    ev, v, block, lines = [], dict(v0 or {}), None, code.split("\n")  # block: [kind, indent, text, lines as shown]
-
-    def flush():
-        if not (block and block[0]): return
-        for item in split_call("f(" + "\n".join(block[2]) + ")", 2)[0]:
-            for a in snake_items(item):
-                p = re.sub(r"\{(?:[^{}]|\{[^{}]*\})*\}", "*", evaluate(a, v))
-                if (FILE_LIKE.search(p) or block[0] == "write") and len(p.replace("*", "")) >= 3 and "://" not in p:
-                    # a declared output without extension: a flag file or a directory(); "/*" lets the link step decide
-                    ev.append((p if FILE_LIKE.search(p) else p.rstrip("/") + "/*", block[0], snippet("\n".join(block[3]), p)))
-
-    i = 0
-    while i < len(lines):
-        line = lines[i]; i += 1
-        line = uncomment(line)
-        if not line.strip(): continue  # blank or comment: a directive goes on
-        m, cur = SNAKE_DIRECTIVE.match(line), len(line) - len(line.lstrip())
-        if block and cur > block[1] and not m: block[2].append(line); block[3].append(line.strip()); continue
-        flush()
-        block = [("write" if m.group(2) in rules.SNAKEMAKE_WRITE else "read" if m.group(2) in rules.SNAKEMAKE_READ
-                  else None), cur, [m.group(3)], [line.strip()]] if m else None
-        a = GEN_ASG.match(line) if not m and cur == 0 else None
-        if a:  # top-level variables, in file order; an assignment goes on while its brackets are open
-            st, d = line, depth(line)
-            while d > 0 and i < len(lines): st += "\n" + uncomment(lines[i]); d += depth(lines[i]); i += 1
-            a = GEN_ASG.match(st)
-            v[a.group(1)] = evaluate(a.group(2), v)
-    flush()
-    return ev
-
-def generic_scan(code, v0=None, stmts=None, vars_only=False, writers=None, code_in_strings=False, shell=False, snakemake=False):
+def generic_scan(code, v0=None, stmts=None, vars_only=False, writers=None, code_in_strings=False, shell=False):
     """-> dict(ev=[(pattern, write|read|mention, statement)], names={literal}, uses={script name}, vars={}, stmts=[]).
     vars_only: only follow assignments and script references (cheap first pass).
     writers: the project's own write functions from fms.json, {name: argument name or position of the path};
     a folder there means every file in it.
-    code_in_strings: calls inside string literals count too (shell scripts, Snakemake: rules.CODE_IN_STRINGS).
-    shell: also read each statement as a command line (rules.SHELL_SCRIPTS).
-    snakemake: also the files declared by rules (rules.SNAKEMAKE_SCRIPTS)."""
+    code_in_strings: calls inside string literals count too (shell scripts: rules.CODE_IN_STRINGS).
+    shell: also read each statement as a command line (rules.SHELL_SCRIPTS)."""
     writers = writers or {}
     v = dict(v0 or {})
     ev, names, uses = [], set(), set()
@@ -378,13 +316,12 @@ def generic_scan(code, v0=None, stmts=None, vars_only=False, writers=None, code_
         m = GEN_ASG.match(st)
         if m:
             words = shell_split(m.group(2)) if shell and re.match(r"\s*(?:export\s+|local\s+)?[\w.]+=\S", st) else []
-            # OUT=results/qc (shell, no spaces) is text; OUT = BASE (Python in a Snakefile) an expression
+            # OUT=results/qc (no spaces) is text, expanded like a shell
             own = words[1:2] in ([], [";"], ["&&"], ["||"], ["|"]) and words  # OUT=x alone or before ;
             val = shell_expand(words[0], before) if own else evaluate(m.group(2), before)
             if not (own and not vars_only): v[m.group(1)] = val  # else shell_words already set it, in line order
             if not vars_only and FILE_LIKE.search(val) and len(val.replace("*", "")) >= 3 and "://" not in val:
                 ev.append((val, "mention", snippet(st, val)))
-    if snakemake and not vars_only: ev += snakemake_files(code, v0)
     return {"ev": sorted(set(ev)), "names": names, "uses": uses, "vars": v, "stmts": stmts}
 
 
@@ -584,7 +521,7 @@ def last_change(path, commit, dirty):
     return min(mtime, datetime.datetime.fromisoformat(d.replace("Z", "+00:00")).timestamp()) if d else mtime
 
 def walk(roots, exclude, hidden=False, skip=()):
-    """Yield files under roots. Hidden folders (.git, .snakemake, ...) are skipped unless hidden=True;
+    """Yield files under roots. Hidden folders (.git, .venv, ...) are skipped unless hidden=True;
     a hidden folder listed explicitly as a root is still scanned. skip: folders never to enter
     (the report folder, so that a report never becomes an output of the next scan)."""
     ex = re.compile("|".join(fnmatch.translate(e) for e in exclude) or "(?!)")
@@ -613,8 +550,7 @@ def _parse2(job):
     """second pass: evidence, with the variables inherited from source()d / imported scripts"""
     s, v0, stmts, writers = job
     g = generic_scan(read_code(s)[0], v0, stmts=stmts, writers=writers,
-                     code_in_strings=s.lower().endswith(rules.CODE_IN_STRINGS), shell=s.lower().endswith(rules.SHELL_SCRIPTS),
-                     snakemake=s.lower().endswith(rules.SNAKEMAKE_SCRIPTS))
+                     code_in_strings=s.lower().endswith(rules.CODE_IN_STRINGS), shell=s.lower().endswith(rules.SHELL_SCRIPTS))
     return [list(e) for e in g["ev"]], sorted(g["names"])
 
 def pmap(fn, items):
@@ -654,7 +590,7 @@ def scan(a):
     tpl_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "view.html")
     if not os.path.exists(tpl_path): sys.exit(f"missing template {tpl_path} (broken install?)")
     root = os.path.realpath(".")
-    exts = tuple(e.lower() for e in cfg.get("extensions", list(SCRIPT_EXT + rules.SCRIPT_NAMES)))
+    exts = tuple(e.lower() for e in cfg.get("extensions", list(SCRIPT_EXT)))
     exclude = cfg.get("exclude", rules.EXCLUDE)
     script_exclude = exclude if "exclude" in cfg else exclude + rules.SCRIPT_ONLY_EXCLUDE
     hidden = cfg.get("hidden", False)  # scan hidden folders too
