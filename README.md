@@ -213,14 +213,12 @@ record how an output was made.
    - *read, load, open, import, include* → **read**
    - an `open()` mode such as `"w"` overrides the name, and so does Perl's `open($fh, ">", path)` or `open(FH, ">path")`.
    - An apply-style call takes the direction of the function it applies: `lapply(files, readRDS)` reads.
-   - Snakemake rules declare their files: `output:`, `log:` and `benchmark:` → **write**, `input:` → **read**,
-     with `{wildcards}` as `*`.
-   - In shell scripts, Snakemake `shell:` commands and Makefiles, command lines are read as words:
+   - In shell scripts, command lines are read as words:
      a redirection (`> out.txt`, `2>> err.log`), an output flag (`-o`, `-O`, `--output=`) or `tee` → **write**,
      `< in.txt` → **read**, with `$VAR` expanded.
    - Anything else is a weaker **mention**.
    - A call written inside a string (`'saveRDS(x, "a.rds")'`) is text, not code, except in shell scripts,
-     Snakemake, Nextflow and Makefiles, which run code from strings (`Rscript -e "..."`).
+     which run code from strings (`Rscript -e "..."`).
 3. **Resolve paths.**
    - Relative paths are tried against the script's folder and the project root.
    - Symlinks and aliases are resolved, so that `results/x.rds` and `/data/…/x.rds` count as the same file.
@@ -248,8 +246,8 @@ record how an output was made.
      An output is flagged as possibly stale when its script changed more than an hour after it.
 
 Scripts are recognised by extension. The default list covers R, R Markdown, Quarto, Python,
-Jupyter, shell, Snakemake, Julia, Nextflow, Perl and MATLAB, plus files named `Snakefile`
-and `Makefile`. Set `extensions` in `fms.json` to change it.
+Jupyter, shell, Julia, Perl and MATLAB. Workflow engines (Snakemake, Nextflow, Make) are left out:
+they track their outputs themselves. Set `extensions` in `fms.json` to change the list.
 
 ### Limits
 
@@ -260,7 +258,6 @@ and `Makefile`. Set `extensions` in `fms.json` to change it.
 
 ## Roadmap
 
-- Rule-aware Nextflow support (inputs and outputs declared per process).
 - Hard evidence from **DVC** and **git-lfs**. Content hashes would confirm exactly
   which version of an input produced an output, on top of today's pattern matching.
 - Incremental re-runs for very large output trees.

@@ -98,8 +98,8 @@ that work away too.
 - **Set and dict order.** Python randomises string hashes per process, so iterating a set of paths
   gives a different order in each run. Anything that reaches the output must be sorted, with the path
   as the final tie-breaker.
-- **Code inside strings** (#29, PR #31). In R and Python a quoted call is text; shell scripts, Snakemake,
-  Nextflow and Makefiles run code from strings (`Rscript -e "..."`). Test both kinds.
+- **Code inside strings** (#29, PR #31). In R and Python a quoted call is text; shell scripts run code
+  from strings (`Rscript -e "..."`). Test both kinds.
 - **Unbounded fields.** `not_chosen` has one entry per competing script; readers raise
   `csv.field_size_limit`, because the default (128 kB) is reachable with a few thousand scripts.
 - **Configured folders** (`write_functions`) cover the files directly in the folder. Check them per

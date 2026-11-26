@@ -67,28 +67,7 @@
       "pipeline/00_fetch.sh"
     ],
     "figures/archive/poster_2024.pdf": [],
-    "reports/notes.docx": [],
-    "data/raw/S1.fastq.gz": [],
-    "results/qc/S1_fastqc.html": [
-      "workflow/Snakefile"
-    ],
-    "logs/fastqc_S1.log": [
-      "workflow/Snakefile"
-    ],
-    "data/raw/S2.fastq.gz": [],
-    "results/qc/S2_fastqc.html": [
-      "workflow/Snakefile"
-    ],
-    "logs/fastqc_S2.log": [
-      "workflow/Snakefile"
-    ],
-    "data/raw/S3.fastq.gz": [],
-    "results/qc/S3_fastqc.html": [
-      "workflow/Snakefile"
-    ],
-    "logs/fastqc_S3.log": [
-      "workflow/Snakefile"
-    ]
+    "reports/notes.docx": []
   },
   "stale": [
     "figures/qc/signal.png"
