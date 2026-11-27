@@ -4,20 +4,20 @@ cli.py applies them; tests/test_rules.py checks every example and that the READM
 EVIDENCE. Matching is static analysis of the scripts as text, so these are heuristics: the examples say what
 each rule is meant to catch and what it must leave alone.
 """
+from . import languages as L
 
 # ---------- which files are scripts ----------
-# workflow engines (Snakemake, Nextflow, Make) are left out: they track their outputs themselves
-SCRIPT_EXT = (".r", ".rmd", ".qmd", ".py", ".ipynb", ".sh", ".jl", ".pl", ".m")
-NOTEBOOK_EXT = (".rmd", ".qmd", ".ipynb")  # rendered by knitr/Quarto/Jupyter: stem-rule and chunk-folder
+# one module per language in languages/: its extensions and the calls it knows. Workflow engines (Snakemake,
+# Nextflow, Make) are left out: they track their outputs themselves
+SCRIPT_EXT = L.extensions()
+NOTEBOOK_EXT = L.extensions(key="NOTEBOOKS")  # rendered by knitr/Quarto/Jupyter: stem-rule and chunk-folder
 # skipped everywhere unless fms.json sets "exclude": editor, RStudio and cache files
 EXCLUDE = ["rstudio-server-db", "rstudio_state", "__pycache__", "*_cache", "*.RData", ".Rhistory", "#*#", "%",
            ".DS_Store"]
-SCRIPT_ONLY_EXCLUDE = ["build", "dist"]
+SCRIPT_ONLY_EXCLUDE = ["build", "dist"]  # copies of scripts made by Python packaging; outputs may live there
 # scripts that run other code from strings (Rscript -e "...", python -c "..."): calls
 # inside their string literals count. In all other scripts a string is text: 'saveRDS(x, "a.rds")' is no call.
-CODE_IN_STRINGS = (".sh",
-                   ".jl",  # Julia runs $(...) inside strings: "$(write(out, data))"
-                   ".m")  # MATLAB: ' is also the transpose operator (y = x'), so its quotes cannot be paired  # copies of scripts made by Python packaging; outputs may live there
+CODE_IN_STRINGS = L.extensions(when=lambda x: getattr(x, "CODE_IN_STRINGS", False))
 
 # ---------- read or write: from the name of the call that holds the path, in any language ----------
 # regular expressions, matched anywhere in the last part of the call name (pd.DataFrame.to_csv -> to_csv)
@@ -100,79 +100,13 @@ STRING_EXAMPLES = [  # same format as the evidence examples: a call inside a str
      "links": {"out/c.csv": "run.sh write"}},
 ]
 
-# shell command lines: no calls, so words are read like a shell
-SHELL_SCRIPTS = (".sh",)
-SHELL_WRITE_FLAGS = ["-o", "-O", "--output", "--out", "--outfile", "--output-file", "--output-document"]
-SHELL_WRITE_COMMANDS = ["tee"]  # every file argument is written
-SHELL_EXAMPLES = [  # same format as the evidence examples
-    {"why": "a redirection writes (> >> &> 2>) or reads (<) the next word",
-     "files": {"run.sh": "sort < data/in.txt > out/sorted.txt 2>> out/err.log\n",
-               "data/in.txt": "", "out/sorted.txt": "", "out/err.log": ""},
-     "links": {"data/in.txt": "", "out/sorted.txt": "run.sh write", "out/err.log": "run.sh write"}},
-    {"why": "an output flag writes its argument, also as --flag=path; a URL is never a file",
-     "files": {"get.sh": "curl -L -o data/genome.fa.gz https://x.org/genome.fa.gz\n"
-                         "wget -O data/genes.gtf https://x.org/genes.gtf\nsamtools sort --output=out/a.bam in.bam\n",
-               "data/genome.fa.gz": "", "data/genes.gtf": "", "out/a.bam": "", "in.bam": ""},
-     "links": {"data/genome.fa.gz": "get.sh write", "data/genes.gtf": "get.sh write", "out/a.bam": "get.sh write",
-               "in.bam": "get.sh mention"}},
-    {"why": "shell variables are expanded, and an unquoted assignment is text, not an expression",
-     "files": {"v.sh": "OUT=results/qc\nfastqc x.fq -o $OUT\necho done | tee \"${OUT}/done.txt\"\n",
-               "results/qc/done.txt": ""},
-     "links": {"results/qc/done.txt": "v.sh write"}},
-    {"why": "a redirection needs no spaces around it",
-     "files": {"p.sh": "printf x>out/result.txt\n", "out/result.txt": ""},
-     "links": {"out/result.txt": "p.sh write"}},
-    {"why": "a quoted argument is one word: a file name with spaces, or text that only looks like a command",
-     "files": {"q.sh": "printf x > \"out/my report.txt\"\necho \"example > out/report.txt\"\n",
-               "out/my report.txt": "", "out/report.txt": ""},
-     "links": {"out/my report.txt": "q.sh write", "out/report.txt": ""}},
-    {"why": "bash -c runs its quoted argument as a command line",
-     "files": {"c.sh": "bash -c \"sort x.txt > out/c.txt\"\n", "out/c.txt": ""},
-     "links": {"out/c.txt": "c.sh write"}},
-    {"why": "tee writes only when it is the command, not an argument",
-     "files": {"t.sh": "echo tee data/input.txt\n", "data/input.txt": ""},
-     "links": {"data/input.txt": "t.sh mention"}},
-    {"why": "an escaped operator is part of its word",
-     "files": {"e.sh": "echo out/a\\>b.txt\n", "b.txt": ""},
-     "links": {"b.txt": ""}},
-    {"why": "a command substitution with spaces is one run-time part of the word",
-     "files": {"d.sh": "printf x > out/$(date +%F).txt\n", "out/2026-01-01.txt": ""},
-     "links": {"out/2026-01-01.txt": "d.sh write-glob"}},
-    {"why": "a command substitution is unknown, whatever the script's variables are called",
-     "files": {"m.sh": "__=out/wrong.txt\nprintf x > \"$(date)\"\n", "out/wrong.txt": ""},
-     "links": {"out/wrong.txt": "m.sh mention"}},
-    {"why": "an assignment followed by ; holds for the rest of the line",
-     "files": {"n.sh": "OUT=old\nOUT=new; printf x > \"$OUT/done.txt\"\n", "new/done.txt": "", "old/done.txt": ""},
-     "links": {"new/done.txt": "n.sh write", "old/done.txt": ""}},
-    {"why": "an assignment in a child shell (bash -c, shell:) does not change the script's variables",
-     "files": {"k.sh": "OUT=old\nbash -c 'OUT=new; true'\nprintf x > \"$OUT/a.txt\"\n", "old/a.txt": "", "new/a.txt": ""},
-     "links": {"old/a.txt": "k.sh write", "new/a.txt": ""}},
-    {"why": "each child shell starts from the script's variables at that point",
-     "files": {"j.sh": "OUT=old\nOUT=new; bash -c \"printf x > $OUT/a.txt\"\n"
-                       "bash -c 'X=first; true'; bash -c 'printf x > \"out/$X/r.txt\"'\n",
-               "new/a.txt": "", "old/a.txt": "", "out/first/r.txt": ""},
-     "links": {"new/a.txt": "j.sh write", "old/a.txt": "", "out/first/r.txt": "j.sh write-glob"}},  # $X unknown: out/*/
-    {"why": "the last of several assignments on a line holds",
-     "files": {"y.sh": "OUT=old; OUT=new\nprintf x > \"$OUT/a.txt\"\n", "new/a.txt": "", "old/a.txt": ""},
-     "links": {"new/a.txt": "y.sh write", "old/a.txt": ""}},
-    {"why": "an assignment is expanded once, with the values before it",
-     "files": {"o.sh": "OUT=out\nOUT=$OUT/sub\nprintf x > \"$OUT/a.txt\"\n", "out/sub/a.txt": ""},
-     "links": {"out/sub/a.txt": "o.sh write"}},
-    {"why": "prefix assignments and redirections keep the command position",
-     "files": {"l.sh": "LC_ALL=C tee out/result.txt\n> out/log.txt tee out/r2.txt\n",
-               "out/result.txt": "", "out/log.txt": "", "out/r2.txt": ""},
-     "links": {"out/result.txt": "l.sh write", "out/log.txt": "l.sh write", "out/r2.txt": "l.sh write"}},
-    {"why": "only shell-like scripts: in R and Python > is a comparison",
-     "files": {"c.R": "if (n > 3) x <- 1\nprint(n > out.txt)\n", "out.txt": ""},
-     "links": {"out.txt": ""}},
-]
+# shell command lines: languages/shell.py
+SHELL_SCRIPTS = L.extensions(when=lambda x: getattr(x, "SYNTAX", "") == "shell")
+SHELL_WRITE_FLAGS, SHELL_WRITE_COMMANDS, SHELL_EXAMPLES = L.shell.WRITE_FLAGS, L.shell.WRITE_COMMANDS, L.shell.EXAMPLES
 
 # ---------- path builders, recognised by the shape of their name in any language ----------
-JOIN_CALLS = ["file.path", "path", "join", "joinpath", "path_join", "here"]  # parts joined with "/"
-CONCAT_CALLS = ["paste0", "str_c", "stri_c", "concat", "stri_paste"]  # parts glued together
-WRAP_CALLS = ["str", "as.character", "normalizePath", "path.expand", "expanduser", "abspath", "realpath",
-              "fspath", "resolve", "I", "toString", "Path"]  # one argument, passed through
-FORMAT_CALLS = ["paste", "sprintf", "glue", "str_glue"]  # paste(sep=), sprintf %s, glue {name}
+# the calls of each role come from languages/ ("join", "concat", "wrap", "format")
+JOIN_CALLS, CONCAT_CALLS, WRAP_CALLS, FORMAT_CALLS = (list(L.calls(r)) for r in ("join", "concat", "wrap", "format"))
 BUILDER_EXAMPLES = [  # (expression, variables, path pattern): "*" is a part only known at run time
     ('file.path(out, "pca.png")', {"out": "figures"}, "figures/pca.png"),
     ('os.path.join(OUT, f"hist_{feature}.svg")', {"OUT": "figures"}, "figures/hist_*.svg"),
@@ -191,13 +125,10 @@ BUILDER_EXAMPLES = [  # (expression, variables, path pattern): "*" is a part onl
 # directory listings stand for the files they list: list.files(dir, pattern = regex) and fs::dir_ls(dir, glob =,
 # regexp =) -> dir/<glob>; Sys.glob(), glob.glob() -> their pattern. A regex becomes a glob when it uses only
 # ^, $, .*, .+, .{n} and \\.; an unanchored one is taken as the end of the name; any other regex lists every file (*).
-LIST_CALLS = ["list.files", "dir_ls"]
-GLOB_CALLS = ["Sys.glob", "glob", "iglob"]
+LIST_CALLS, GLOB_CALLS = list(L.calls("list")), list(L.calls("glob"))
 # apply-style calls: lapply(files, readRDS) reads, because the function they apply reads. The function is the
 # argument at these positions (map: purrr's map(.x, .f) or Python's map(f, xs)) or named in APPLY_FUNCTION_ARGS.
-APPLY_CALLS = {**{n: (1,) for n in "lapply sapply vapply map_df map_dfr map_dfc walk imap pmap future_map "
-                                   "future_lapply mclapply".split()},
-               "mapply": (0,), "Map": (0,), "parLapply": (2,), "map": (0, 1)}
+APPLY_CALLS = L.calls("apply")
 APPLY_FUNCTION_ARGS = ["FUN", "fun", ".f", "f", "func"]
 APPLY_DATA_ARGS = ["X", ".x", ".l", "cl"]  # named, these free their position: lapply(X = files, readRDS)
 # format calls are case-sensitive (GLUE() is not glue()); the other builders are not
@@ -206,13 +137,9 @@ FILE_EXT_RE = r"\.[A-Za-z][A-Za-z0-9]{0,7}$"
 
 # ---------- R fallback: known R functions that do not say "write" or "read" in their name ----------
 # call name -> index of the positional file argument (a named file=/filename=/path=/con= argument wins)
-R_WRITE = {**{n: 1 for n in "saveRDS write_rds write_csv write.csv write.csv2 write.table write_tsv write_delim "
-                             "fwrite writeLines write.xlsx saveWidget write_xlsx write_parquet".split()},
-           **{n: 0 for n in "ggsave pdf png jpeg tiff svg bmp sink save.image".split()},
-           "save": None}  # save(): file= only
-R_READ = {n: 0 for n in "readRDS read_rds read_csv read.csv read.csv2 read.table read_tsv read_delim read.delim "
-                        "read_excel fread load readLines read_xlsx read_parquet import source".split()}
-R_FILE_ARGS = ("file", "filename", "path", "con")
+R_WRITE = {n: (p[0] if p else None) for n, p in L.calls("write").items()}  # None: file= only
+R_READ = {n: p[0] for n, p in L.calls("read").items()}
+R_FILE_ARGS = L.r.FILE_ARGS
 
 # ---------- linking: evidence that a script made a file, strongest first ----------
 # Only the strongest kind found for an output is reported; ties keep every script with that kind.

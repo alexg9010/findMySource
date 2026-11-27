@@ -6,8 +6,10 @@ index.html; the user cache if the project is not writable). README.md describes 
 
 ## Layout
 
-- `findmysource/rules.py`: every matching rule as data, with its reason and examples (direction words, path
-  builders, R functions, evidence kinds and their order, staleness). `tests/test_rules.py` checks the examples.
+- `findmysource/rules.py`: every matching rule as data, with its reason and examples (direction words, evidence
+  kinds and their order, staleness). `tests/test_rules.py` checks the examples.
+- `findmysource/languages/`: one module per language with its extensions and known calls (`"saveRDS": "write 1"`,
+  `"file.path": "join"`; roles in `languages/__init__.py`), plus its examples. rules.py combines them.
 - `findmysource/cli.py`: the engine that applies them, and the CLI. Generic path finder (`generic_scan`), R fallback
   (`parse_script`), path resolution (`make_norm`), matching and ranking (`RANK`), `scan()` writes the
   report, `query()` answers `fms <file|folder|script>`.
@@ -22,7 +24,7 @@ index.html; the user cache if the project is not writable). README.md describes 
 
 - No runtime dependencies, standard library only. Must run on Python 3.8.
 - The report must work offline: no CDN, no network requests (`tests/visual.py` fails on any).
-- A rule (a word list, a threshold, an evidence kind) belongs in rules.py, with an example; cli.py and the
+- A rule (a word list, a threshold, an evidence kind) belongs in rules.py (or a language module), with an example; cli.py and the
   report read it from there. After changing `EVIDENCE`, `python tests/test_rules.py --fix` rewrites the README table.
 - A matching change needs a case in `rules.py` (an example), `tests/test_rules.py`, `tests/test_core.py`,
   or an example project plus its `expected.json`. See TESTING.md. Never weaken a test or expected.json to make a change pass.

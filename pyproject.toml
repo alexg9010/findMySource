@@ -24,7 +24,7 @@ fms = "findmysource.cli:main"
 findmysource = "findmysource.cli:main"
 
 [tool.setuptools]
-packages = ["findmysource"]
+packages = ["findmysource", "findmysource.languages"]
 
 [tool.setuptools.package-data]
 findmysource = ["view.html"]

@@ -27,7 +27,8 @@ python tests/bench.py --compare before.json after.json
 
 ### Rules as data, examples as tests
 
-Every rule lives in `findmysource/rules.py` with its reason and examples:
+Every rule lives in `findmysource/rules.py`, or for one language in `findmysource/languages/`, with its reason
+and examples:
 - tiny projects for each evidence kind, with what must match and what must not;
 - calls with their expected direction;
 - expressions with the path they must evaluate to.
