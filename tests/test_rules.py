@@ -1,4 +1,4 @@
-"""Every rule in findmysource/rules.py does what its examples say, and the README describes the rules as they are.
+"""Every rule in findmysource/rules.py and findmysource/languages/ does what its examples say, and the README describes the rules as they are.
 
     pytest tests/test_rules.py      or      python tests/test_rules.py [--fix]   (--fix rewrites the README table)
 """
@@ -10,7 +10,7 @@ import tempfile
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, REPO)
-from findmysource import cli, rules  # noqa: E402
+from findmysource import cli, languages, rules  # noqa: E402
 
 
 def links(files, symlinks=None):
@@ -42,8 +42,16 @@ def test_string_examples():
     assert not bad, "\n".join(bad)
 
 
-def test_shell_examples():
-    bad = [f"{x['why']}: {b}" for x in rules.SHELL_EXAMPLES for b in check(x)]
+def test_language_examples():
+    bad = [f"{lang.__name__}: {x['why']}: {b}" for lang in languages.LANGUAGES for x in getattr(lang, "EXAMPLES", [])
+           for b in check(x)]
+    assert not bad, "\n".join(bad)
+
+
+def test_language_calls_are_well_formed():
+    roles = ("write", "read", "join", "concat", "format", "wrap", "list", "glob", "apply")
+    bad = [f"{lang.__name__}: {n}: {spec!r}" for lang in languages.LANGUAGES for n, spec in getattr(lang, "CALLS", {}).items()
+           if spec.split()[0] not in roles or not all(p.isdigit() for x in spec.split()[1:] for p in x.split(","))]
     assert not bad, "\n".join(bad)
 
 
